@@ -7,8 +7,10 @@ Ripple shows the three costs of every purchase: dollars now, 30-year future valu
 ```bash
 cd frontend
 npm install
-npm run dev
+npx expo start
 ```
+
+Open the QR code in Expo Go, or press `a` for Android / `i` for iOS when a simulator is available.
 
 ## Backend
 

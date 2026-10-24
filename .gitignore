@@ -1,6 +1,7 @@
 # Node
 node_modules/
 dist/
+.expo/
 
 # Python
 __pycache__/

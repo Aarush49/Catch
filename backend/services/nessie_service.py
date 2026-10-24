@@ -60,26 +60,51 @@ def accounts(customer_id: str) -> list[dict[str, Any]]:
 
 
 def purchases(account_id: str) -> list[dict[str, Any]]:
-    result = _request("GET", f"/accounts/{quote(account_id, safe='')}/purchases")
+    return _transactions(account_id, "purchases")
+
+
+def _transactions(account_id: str, kind: str) -> list[dict[str, Any]]:
+    result = _request("GET", f"/accounts/{quote(account_id, safe='')}/{kind}")
     if not isinstance(result, list):
         raise NessieServiceError("Bank sandbox returned an invalid transaction list.")
     return result
 
 
-def normalize_purchase(purchase: dict[str, Any]) -> dict[str, Any] | None:
+def deposits(account_id: str) -> list[dict[str, Any]]:
+    return _transactions(account_id, "deposits")
+
+
+def withdrawals(account_id: str) -> list[dict[str, Any]]:
+    return _transactions(account_id, "withdrawals")
+
+
+def transfers(account_id: str) -> list[dict[str, Any]]:
+    return _transactions(account_id, "transfers")
+
+
+def normalize_purchase(purchase: dict[str, Any], kind: str = "purchase") -> dict[str, Any] | None:
     try:
         amount = Decimal(str(purchase.get("amount")))
-        if not amount.is_finite() or amount <= 0:
+        if not amount.is_finite() or amount == 0:
             return None
-        purchased_on = date.fromisoformat(str(purchase.get("purchase_date") or purchase.get("date"))[:10])
+        purchased_on = date.fromisoformat(str(purchase.get("purchase_date") or purchase.get("transaction_date") or purchase.get("date"))[:10])
     except (InvalidOperation, TypeError, ValueError):
         return None
     txn_id = purchase.get("_id") or purchase.get("id")
+    description=str(purchase.get("description") or purchase.get("medium") or kind.title())
+    normalized_kind=kind
+    category=kind
+    if kind == "deposit" and any(word in description.lower() for word in ("salary","payroll","paycheck","pay check","wage")):
+        normalized_kind="income"
+        category="salary"
     return {
         "id": str(txn_id) if txn_id else None,
         "date": purchased_on,
         "amount": amount,
-        "description": str(purchase.get("description") or "Purchase"),
+        "description": description,
         "merchant_id": purchase.get("merchant_id"),
         "source": "nessie",
+        "type": normalized_kind,
+        "category": category,
+        "raw": purchase,
     }

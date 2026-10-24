@@ -1,6 +1,6 @@
 # Ripple
 
-Ripple is a backend-only FastAPI API for receipt scanning, spending history, Nessie sandbox transactions, price comparisons, and purchase projections. Data is held in memory for the running demo and is cleared when the API restarts.
+Ripple is a FastAPI backend and React demo for receipt scanning, spending history, Nessie sandbox transactions, price comparisons, and purchase projections. User accounts and demo records persist in a local SQLite file at `data/ripple.sqlite3` (override with `RIPPLE_DB_PATH`).
 
 ## Frontend
 
@@ -25,7 +25,20 @@ uvicorn backend.main:app --reload
 ```
 
 On Windows, create the environment with `python -m venv .venv`, activate with
-`.venv\Scripts\activate`, and use `copy .env.example .env`.
+`.venv\Scripts\Activate.ps1`, and use `copy .env.example .env`. Install the
+updated requirements again after pulling changes: `pip install -r backend/requirements.txt`.
+
+The UI signup and login use the local API. Passwords are stored as salted
+PBKDF2 hashes; session tokens are stored as hashes. To create a repeatable local
+demo account and sample purchase, salary, and withdrawal history, run from the
+repository root:
+
+```bash
+python scripts/seed_sqlite_demo.py
+```
+
+Demo login: `demo@ripple.local` / `RippleDemo123!`. The SQLite file is local and
+gitignored. Delete `data/ripple.sqlite3` to reset the demo database.
 
 The existing API health check is available at `http://localhost:8000/health`.
 Interactive API documentation is at `http://localhost:8000/docs`.
@@ -39,9 +52,25 @@ and never place secrets in frontend environment variables.
 | Variable | Purpose |
 | --- | --- |
 | `SERPAPI_KEY` | Required for shopping search; get a key from [SerpAPI](https://serpapi.com/manage-api-key). Backend only. |
-| `NESSIE_API_KEY` | Required for Nessie customer, account, and purchase requests. |
+| `NESSIE_API_KEY` | Required for Nessie customer, account, and transaction requests. |
 | `GEMINI_API_KEY` | Required for receipt scanning; also enables generated prediction copy. |
-| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash`. |
+| `GEMINI_MODEL` | Optional; defaults to `gemini-3.8-flash`. |
+| `RIPPLE_DB_PATH` | Optional; SQLite file path, defaults to `data/ripple.sqlite3`. |
+
+## Account and bank data
+
+`POST /api/auth/signup` and `POST /api/auth/login` accept `email` and
+`password` (minimum 8 characters), and return a bearer token. Send it as
+`Authorization: Bearer <token>` for user data endpoints. `GET /api/auth/me`
+returns the signed-in user; `POST /api/auth/logout` invalidates that session.
+
+Nessie is a Capital One **sandbox**, not a connection to a real bank. With a
+sandbox API key configured, list sandbox customers and accounts, then call
+`POST /api/nessie/link` with the chosen IDs. `GET /api/nessie/transactions`
+fetches and stores that account's purchases, deposits, withdrawals, and
+transfers. Deposits whose description says salary/payroll/paycheck/wages are
+marked as salary income. The endpoint returns the stored history. Requests
+require the signed-in user's bearer token.
 
 ## Shopping alternatives
 
@@ -140,9 +169,9 @@ life-cycle measurements. Read scans with `GET /api/receipts` and
 ## Spending history
 
 `GET /api/spending/history?days=90` returns daily, Monday-start weekly, and
-monthly totals for the selected recent date range. It includes scanned receipt
-items and the latest fetched Nessie transactions. A purchase present in both
-sources can be counted twice.
+monthly totals for the selected recent date range, scanned receipt items,
+persisted bank expenses, and an `income_total` for saved salary deposits. A
+purchase present in both receipt and bank sources can be counted twice.
 
 ## Nessie sandbox
 
@@ -152,13 +181,14 @@ Link it with:
 
 ```bash
 curl -X POST http://localhost:8000/api/nessie/link \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"customer_id":"CUSTOMER_ID","account_id":"ACCOUNT_ID"}'
 ```
 
-Then call `GET /api/nessie/transactions` to fetch purchases. Nessie credentials
-stay in backend `.env`; requests use HTTPS. Link state and imported transactions
-are in memory and reset after restart.
+Then call `GET /api/nessie/transactions` with the same bearer token to fetch the account history. Nessie
+credentials stay in backend `.env`; requests use HTTPS. Linked account and
+imported transactions persist per user in SQLite.
 
 ## Shopping list
 
@@ -206,5 +236,5 @@ timeouts, endpoint validation, response schemas, and the existing health route.
 Use the curl example above for an optional live smoke test with a configured key;
 it can consume one search credit.
 
-The API has no user authentication. Process-local records and cache entries are
-shared by clients of this demo server and are cleared on restart.
+Account data persists in SQLite and is separated per signed-in user. The SerpAPI
+result cache is process-local and clears when the API restarts.

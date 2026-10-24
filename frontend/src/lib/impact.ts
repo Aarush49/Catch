@@ -1,4 +1,4 @@
-import { Category, ReceiptItem } from '../types';
+import { Category, Receipt, ReceiptItem } from '../types';
 import { rateForCategory } from './categoryRates';
 
 export const factors: Record<Category, number> = { dining: .18, grocery: .09, transport: .24, shopping: .14, entertainment: .08, utilities: .32, other: .12 };
@@ -57,5 +57,33 @@ export const receiptCarbon = (items: { price: number; category: Category }[]) =>
  */
 export const receiptFutureValue = (items: ReceiptItem[], years = 30): number =>
   items.reduce((sum, item) => sum + futureValue(Number(item.price || 0), years, item.category), 0);
+
+/**
+ * Dynamically computes consecutive active days (streak) with logged purchases
+ * counting backwards from today (Oct 24).
+ */
+export const calculateStreak = (receipts: Receipt[]): { streakCount: number; streakDays: Set<number> } => {
+  const daysWithPurchases = new Set<number>();
+  receipts.forEach(r => {
+    const match = r.date.match(/Oct\s*(\d+)/i);
+    if (match) {
+      daysWithPurchases.add(parseInt(match[1], 10));
+    }
+  });
+
+  let count = 0;
+  const streakDays = new Set<number>();
+  const today = 24; // October 24
+  for (let d = today; d >= 1; d--) {
+    if (daysWithPurchases.has(d)) {
+      count++;
+      streakDays.add(d);
+    } else {
+      break;
+    }
+  }
+
+  return { streakCount: count, streakDays };
+};
 
 export const currency = (value: number, digits = 0) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format(value);

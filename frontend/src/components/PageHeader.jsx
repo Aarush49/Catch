@@ -1,0 +1,1 @@
+export default function PageHeader({eyebrow,title,detail}){return <header className="px-5 pb-6 pt-8 sm:px-8"><p className="eyebrow">{eyebrow}</p><div className="mt-1 flex items-end justify-between gap-4"><h1 className="text-3xl font-semibold tracking-[-.04em]">{title}</h1>{detail&&<span className="text-xs font-medium text-prussian/60">{detail}</span>}</div></header>}

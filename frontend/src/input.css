@@ -1,0 +1,35 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #081627; --prussian: #11233b; --regal: #003a70; --linen: #eae4d9;
+  --jungle: #16a34a; --tomato: #d03027; --amber: #fbbf24;
+  --ink-rgb: 8 22 39; --prussian-rgb: 17 35 59; --regal-rgb: 0 58 112; --linen-rgb: 234 228 217;
+  --jungle-rgb: 22 163 74; --tomato-rgb: 208 48 39; --amber-rgb: 251 191 36;
+  font-family: "DM Sans", system-ui, sans-serif; color: var(--ink); background: var(--linen);
+}
+* { box-sizing: border-box; }
+html, body { background: var(--linen); }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, select { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+@layer components {
+  .app-card { @apply rounded-card border border-ink/10 bg-raised p-5 shadow-soft; }
+  .eyebrow { @apply text-xs font-medium text-prussian/65; }
+  .section-title { @apply text-xl font-semibold tracking-tight text-ink; }
+  .field { @apply h-12 w-full rounded-control border border-ink/10 bg-raised px-4 font-medium text-ink outline-none transition placeholder:text-prussian/40 focus:border-regal focus:ring-2 focus:ring-regal/10; }
+  .primary-button { @apply flex h-12 items-center justify-center rounded-control bg-regal px-5 font-semibold text-linen transition active:scale-[.98] disabled:opacity-50; }
+  .secondary-button { @apply flex h-12 items-center justify-center rounded-control border border-ink/15 bg-transparent px-5 font-semibold text-ink transition active:scale-[.98]; }
+  .chunky-card { @apply rounded-card border border-ink/10 bg-raised shadow-soft; }
+  .page-enter { animation: page-in 360ms ease-out both; }
+}
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.scan-sheet { animation: sheet-in 300ms cubic-bezier(.2,.8,.2,1) both; }
+.tabular { font-variant-numeric: tabular-nums; }
+.ripple-ring { animation: ripple 8s ease-out infinite; }
+@keyframes ripple { 0% { transform: scale(.82); opacity:.18 } 85%,100% { transform:scale(1.18); opacity:0 } }
+.recharts-cartesian-axis-tick-value { fill: rgba(17,35,59,.6); font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

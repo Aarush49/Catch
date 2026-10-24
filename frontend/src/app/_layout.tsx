@@ -1,2 +1,7 @@
-import { Stack } from 'expo-router';import { StatusBar } from 'expo-status-bar';import { useFonts,DMSans_400Regular,DMSans_500Medium,DMSans_600SemiBold,DMSans_700Bold } from '@expo-google-fonts/dm-sans';import { SafeAreaProvider } from 'react-native-safe-area-context';import { AppStoreProvider } from '../store/AppStore';import { colors } from '../theme';import { LoadingState } from '../components/UI';
-export default function RootLayout(){const[loaded]=useFonts({DMSans_400Regular,DMSans_500Medium,DMSans_600SemiBold,DMSans_700Bold});if(!loaded)return <LoadingState label="Loading Ripple"/>;return <SafeAreaProvider><AppStoreProvider><StatusBar style="dark"/><Stack screenOptions={{headerShown:false,contentStyle:{backgroundColor:colors.linen},animation:'fade_from_bottom'}}><Stack.Screen name="scan" options={{presentation:'modal',animation:'slide_from_bottom'}}/><Stack.Screen name="review"/><Stack.Screen name="receipt/[id]"/><Stack.Screen name="compare"/><Stack.Screen name="rewind"/><Stack.Screen name="group"/><Stack.Screen name="calendar"/></Stack></AppStoreProvider></SafeAreaProvider>}
+import React from 'react';
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { TallyProvider } from '../store/TallyProvider';
+import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
+import { ActivityIndicator, View } from 'react-native';
+export default function RootLayout(){const [loaded]=useFonts({DMSans_400Regular,DMSans_500Medium,DMSans_700Bold});if(!loaded)return <View style={{flex:1,alignItems:'center',justifyContent:'center',backgroundColor:'#EAE4D9'}}><ActivityIndicator color="#003A70"/></View>;return <TallyProvider><StatusBar style="dark"/><Stack screenOptions={{headerShown:false,animation:'fade',contentStyle:{backgroundColor:'#EAE4D9'}}}/></TallyProvider>}

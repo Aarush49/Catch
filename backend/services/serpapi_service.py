@@ -3,6 +3,8 @@
 import math
 import os
 import re
+import time
+from threading import RLock
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from urllib.parse import urlsplit
 
@@ -13,6 +15,8 @@ from backend.models import ShoppingAlternative, ShoppingProduct
 
 SERPAPI_URL = "https://serpapi.com/search.json"
 REQUEST_TIMEOUT_SECONDS = 15.0
+CACHE_TTL_SECONDS = 15 * 60
+MAX_CACHE_ENTRIES = 256
 _CENT = Decimal("0.01")
 _USD_PRICE = re.compile(
     r"(?:US\$|\$|USD\s*)?((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)(?:\s*USD)?",
@@ -27,6 +31,8 @@ _NON_COMPARABLE_TERMS = {
     "renewed", "replacement", "replica", "restored", "skin", "stand", "sticker",
     "strap", "used",
 }
+_cache_lock = RLock()
+_product_cache: dict[tuple[str, object], tuple[float, list[ShoppingProduct]]] = {}
 
 
 class ShoppingServiceError(Exception):
@@ -121,12 +127,20 @@ def _normalize_product(item: object) -> ShoppingProduct | None:
 
 
 def search_products(query: str) -> list[ShoppingProduct]:
-    """Search one page of Google Shopping, without retries or extra engines."""
+    """Search one page of Google Shopping; cache normalized results for 15 minutes."""
     if not query.strip():
         raise ValueError("A product query is required.")
     api_key = os.getenv("SERPAPI_KEY", "").strip()
     if not api_key:
         raise ShoppingServiceError("Shopping search is not configured (SERPAPI_KEY).", 503)
+    cache_key = (query.strip().casefold(), httpx.get)
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _product_cache.get(cache_key)
+        if cached and cached[0] > now:
+            return [ShoppingProduct.model_validate(product.model_dump()) for product in cached[1]]
+        if cached:
+            _product_cache.pop(cache_key, None)
     try:
         response = httpx.get(
             SERPAPI_URL,
@@ -165,7 +179,16 @@ def search_products(query: str) -> list[ShoppingProduct]:
         return []
     if not isinstance(results, list):
         raise ShoppingServiceError("Shopping provider returned invalid shopping results.")
-    return [product for item in results if (product := _normalize_product(item)) is not None]
+    products = [product for item in results if (product := _normalize_product(item)) is not None]
+    with _cache_lock:
+        expired = [key for key, value in _product_cache.items() if value[0] <= now]
+        for key in expired:
+            _product_cache.pop(key, None)
+        if len(_product_cache) >= MAX_CACHE_ENTRIES:
+            oldest = min(_product_cache, key=lambda key: _product_cache[key][0])
+            _product_cache.pop(oldest, None)
+        _product_cache[cache_key] = (now + CACHE_TTL_SECONDS, products)
+    return [ShoppingProduct.model_validate(product.model_dump()) for product in products]
 
 
 def _tokens(text: str) -> list[str]:
@@ -174,7 +197,10 @@ def _tokens(text: str) -> list[str]:
 
 
 def find_alternatives(
-    product_name: str, original_price: float, brand: str | None = None
+    product_name: str,
+    original_price: float,
+    brand: str | None = None,
+    allow_similar: bool = True,
 ) -> list[ShoppingAlternative]:
     """Return up to three cheaper listings; title matches do not prove identity."""
     requested = _tokens(product_name)
@@ -197,6 +223,8 @@ def find_alternatives(
         # with more detail are only similar; no original product ID is supplied
         # by this endpoint, so returned product IDs cannot prove equivalence.
         exact = title_tokens == requested or title_tokens == _tokens(search_query)
+        if not allow_similar and not exact:
+            continue
         with localcontext() as context:
             context.prec = 340  # Covers the full finite float range, plus cents.
             original = Decimal(str(original_price))

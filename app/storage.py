@@ -1,123 +1,198 @@
-"""Thread-safe in-memory storage for receipts, items, and demo account IDs."""
+"""Supabase-backed storage with the existing Python/API response shapes."""
 
-from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
-from threading import RLock
-from typing import Any
-from uuid import UUID, uuid4
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
+from typing import Any, Callable
+from uuid import UUID
 
-_lock = RLock()
-_receipts: dict[UUID, dict[str, Any]] = {}
-_items: list[dict[str, Any]] = []
-_nessie_demo_ids: tuple[str, str] | None = None
+from pydantic import ValidationError
 
+from app.database import DatabaseError, rpc
+from app.models import ParsedReceipt, ReceiptItem
 
-def save_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
-    purchased_date: date = receipt["purchase_date"] or date.today()
-    now = datetime.now(timezone.utc)
-    receipt_id = uuid4()
-    row = {
-        "id": receipt_id,
-        "store_name": receipt["store_name"],
-        "purchase_date": receipt["purchase_date"],
-        "subtotal": receipt["subtotal"],
-        "tax": receipt["tax"],
-        "total": receipt["total"],
-        "raw_json": receipt,
-        "created_at": now,
-    }
-    purchased_at = datetime.combine(purchased_date, time.min, tzinfo=timezone.utc)
-    saved_items = []
-    for item in receipt["items"]:
-        saved_items.append({
-            "id": uuid4(),
-            "receipt_id": receipt_id,
-            "raw_name": item["raw_name"],
-            "full_name": item["full_name"],
-            "category": item["category"],
-            "quantity": item["quantity"],
-            "unit_price": item["unit_price"],
-            "total_price": item["total_price"],
-            "purchased_at": purchased_at,
-            "created_at": now,
-        })
-    with _lock:
-        _receipts[receipt_id] = row
-        _items.extend(saved_items)
-    return _receipt_dict(row, saved_items)
+DEMO_USERNAME = "ripple-demo"
 
 
-def _receipt_dict(row: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
-    result = {**row, "items": items}
-    result["warnings"] = row["raw_json"].get("warnings", [])
+class InvalidReceiptError(ValueError):
+    pass
+
+
+def _uuid(value: UUID | str) -> UUID:
+    try:
+        return value if isinstance(value, UUID) else UUID(value)
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("A valid UUID is required.") from None
+
+
+def _owner(user_id: UUID | str | None) -> str | None:
+    return str(_uuid(user_id)) if user_id is not None else None
+
+
+def _timestamp(value: str) -> datetime:
+    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if result.tzinfo is None:
+        raise ValueError("A timestamp must include its timezone.")
+    return result.astimezone(timezone.utc)
+
+
+def _decimal(value) -> Decimal | None:
+    if value is None:
+        return None
+    # RPCs explicitly return NUMERIC as text, avoiding the SDK JSON decoder's
+    # float conversion and irreversible precision loss on high-precision prices.
+    if isinstance(value, (bool, float)):
+        raise ValueError("RPC monetary values must be decimal strings.")
+    result = Decimal(value)
+    if not result.is_finite():
+        raise ValueError("A finite decimal is required.")
     return result
 
 
-def list_receipts() -> list[dict[str, Any]]:
-    with _lock:
-        rows = sorted(
-            _receipts.values(),
-            key=lambda row: (row["purchase_date"] is not None, row["purchase_date"] or date.min, row["created_at"]),
-            reverse=True,
-        )
-        return [
-            _receipt_dict(row, sorted(
-                (item for item in _items if item["receipt_id"] == row["id"]),
-                key=lambda item: item["created_at"],
-            ))
-            for row in rows
-        ]
+def _user(data: dict) -> dict[str, Any]:
+    if not isinstance(data["username"], str) or not data["username"].strip():
+        raise ValueError("Invalid username")
+    return {"id": _uuid(data["id"]), "username": data["username"], "created_at": _timestamp(data["created_at"])}
 
 
-def get_receipt(receipt_id: UUID) -> dict[str, Any] | None:
-    with _lock:
-        row = _receipts.get(receipt_id)
-        if row is None:
-            return None
-        items = sorted(
-            (item for item in _items if item["receipt_id"] == receipt_id),
-            key=lambda item: item["created_at"],
-        )
-        return _receipt_dict(row, items)
-
-
-def list_items(category: str | None, start: date | None, end: date | None) -> list[dict[str, Any]]:
-    start_at = datetime.combine(start, time.min, tzinfo=timezone.utc) if start else None
-    end_at = datetime.combine(end + timedelta(days=1), time.min, tzinfo=timezone.utc) if end else None
-    with _lock:
-        result = [
-            item for item in _items
-            if (category is None or item["category"] == category)
-            and (start_at is None or item["purchased_at"] >= start_at)
-            and (end_at is None or item["purchased_at"] < end_at)
-        ]
-        return sorted(result, key=lambda item: (item["purchased_at"], item["created_at"]), reverse=True)
-
-
-def spending_summary(period: str) -> dict[str, Any]:
-    cutoff = {"week": datetime.now(timezone.utc) - timedelta(days=7),
-              "month": datetime.now(timezone.utc) - timedelta(days=30)}.get(period)
-    with _lock:
-        selected = [item for item in _items if cutoff is None or item["purchased_at"] >= cutoff]
-    categories: dict[str, Decimal] = {}
-    days: dict[date, Decimal] = {}
-    for item in selected:
-        categories[item["category"]] = categories.get(item["category"], Decimal("0")) + item["total_price"]
-        day = item["purchased_at"].astimezone(timezone.utc).date()
-        days[day] = days.get(day, Decimal("0")) + item["total_price"]
+def _item(data: dict) -> dict[str, Any]:
+    item = ReceiptItem.model_validate({
+        "raw_name": data["raw_name"], "full_name": data["full_name"], "category": data["category"],
+        "quantity": _decimal(data["quantity"]), "unit_price": _decimal(data["unit_price"]),
+        "total_price": _decimal(data["total_price"]),
+    })
     return {
-        "period": period,
-        "by_category": [{"category": key, "total": categories[key]} for key in sorted(categories)],
-        "by_day": [{"day": key, "total": days[key]} for key in sorted(days)],
+        "id": _uuid(data["id"]), "receipt_id": _uuid(data["receipt_id"]), **item.model_dump(),
+        "purchased_at": _timestamp(data["purchased_at"]), "created_at": _timestamp(data["created_at"]),
     }
 
 
+def _receipt(data: dict) -> dict[str, Any]:
+    raw = ParsedReceipt.model_validate(data["raw_json"]).model_dump()
+    total = _decimal(data["total"])
+    if total is None:
+        raise ValueError("Receipt total is required")
+    return {
+        "id": _uuid(data["id"]), "store_name": data["store_name"],
+        "purchase_date": date.fromisoformat(data["purchase_date"]) if data["purchase_date"] else None,
+        "subtotal": _decimal(data["subtotal"]), "tax": _decimal(data["tax"]), "total": total,
+        "raw_json": raw, "created_at": _timestamp(data["created_at"]),
+        "items": [_item(row) for row in data["items"]], "warnings": raw["warnings"],
+    }
+
+
+def _decode(convert: Callable, data):
+    try:
+        return convert(data)
+    except (ValueError, TypeError, KeyError, AttributeError, InvalidOperation):
+        raise DatabaseError("Supabase returned invalid receipt storage data.") from None
+
+
+def _rows(data, convert: Callable) -> list:
+    if not isinstance(data, list):
+        raise DatabaseError("Supabase returned an invalid collection response.")
+    return [_decode(convert, row) for row in data]
+
+
+def _validated_receipt(receipt: dict[str, Any]) -> ParsedReceipt:
+    try:
+        parsed = ParsedReceipt.model_validate(receipt)
+        for item in parsed.items:
+            if (
+                not item.raw_name.strip() or not item.full_name.strip()
+                or item.quantity <= 0 or item.total_price < 0
+                or (item.unit_price is not None and item.unit_price < 0)
+            ):
+                raise ValueError
+        return parsed
+    except (ValidationError, ValueError, TypeError):
+        raise InvalidReceiptError(
+            "Invalid receipt: check required fields, categories, finite nonnegative prices, and positive quantities."
+        ) from None
+
+
+def get_or_create_user(username: str) -> dict[str, Any]:
+    if not isinstance(username, str) or not 1 <= len(username.strip()) <= 100:
+        raise ValueError("Username must contain 1 to 100 characters.")
+    return _decode(_user, rpc("ripple_get_or_create_user", {"p_username": username.strip()}))
+
+
+def get_user(user_id: UUID | str) -> dict[str, Any] | None:
+    data = rpc("ripple_get_user", {"p_user_id": str(_uuid(user_id))})
+    return _decode(_user, data) if data is not None else None
+
+
+def save_receipt(receipt: dict[str, Any], user_id: UUID | str | None = None) -> dict[str, Any]:
+    parsed = _validated_receipt(receipt)
+    # A single RPC creates the demo user (if needed), receipt, and all lines.
+    # Keep the original process-local date fallback for undated receipts.
+    data = rpc("ripple_save_receipt", {
+        "p_receipt": parsed.model_dump(mode="json"), "p_user_id": _owner(user_id),
+        "p_fallback_date": date.today().isoformat(),
+    })
+    return _decode(_receipt, data)
+
+
+def list_receipts(user_id: UUID | str | None = None) -> list[dict[str, Any]]:
+    return _rows(rpc("ripple_receipts", {"p_user_id": _owner(user_id)}), _receipt)
+
+
+def get_receipt(receipt_id: UUID, user_id: UUID | str | None = None) -> dict[str, Any] | None:
+    data = rpc("ripple_receipts", {"p_user_id": _owner(user_id), "p_receipt_id": str(_uuid(receipt_id))})
+    rows = _rows(data, _receipt)
+    if len(rows) > 1:
+        raise DatabaseError("Supabase returned an invalid receipt lookup response.")
+    return rows[0] if rows else None
+
+
+def list_receipt_items(receipt_id: UUID, user_id: UUID | str | None = None) -> list[dict[str, Any]]:
+    receipt = get_receipt(receipt_id, user_id)
+    return receipt["items"] if receipt else []
+
+
+def list_items(
+    category: str | None, start: date | None, end: date | None,
+    user_id: UUID | str | None = None,
+) -> list[dict[str, Any]]:
+    if start and end and start > end:
+        raise ValueError("start must be on or before end.")
+    data = rpc("ripple_items", {
+        "p_category": category, "p_start": start.isoformat() if start else None,
+        "p_end": end.isoformat() if end else None, "p_user_id": _owner(user_id),
+    })
+    return _rows(data, _item)
+
+
+def spending_summary(period: str, user_id: UUID | str | None = None) -> dict[str, Any]:
+    if period not in {"week", "month", "all"}:
+        raise ValueError("period must be week, month, or all.")
+    data = rpc("ripple_spending_summary", {"p_period": period, "p_user_id": _owner(user_id)})
+
+    def convert(value):
+        if value["period"] != period:
+            raise ValueError("Unexpected period")
+        return {
+            "period": period,
+            "by_category": [{"category": row["category"], "total": _decimal(row["total"])} for row in value["by_category"]],
+            "by_day": [{"day": date.fromisoformat(row["day"]), "total": _decimal(row["total"])} for row in value["by_day"]],
+        }
+    return _decode(convert, data)
+
+
 def get_demo_ids() -> tuple[str, str] | None:
-    with _lock:
-        return _nessie_demo_ids
+    data = rpc("ripple_demo_ids")
+    if data is None:
+        return None
+
+    def convert(value):
+        if not all(isinstance(value[key], str) and value[key].strip() for key in ("customer_id", "account_id")):
+            raise ValueError("Invalid demo IDs")
+        return value["customer_id"], value["account_id"]
+    return _decode(convert, data)
 
 
 def set_demo_ids(customer_id: str, account_id: str) -> None:
-    global _nessie_demo_ids
-    with _lock:
-        _nessie_demo_ids = (customer_id, account_id)
+    if not isinstance(customer_id, str) or not customer_id.strip() or not isinstance(account_id, str) or not account_id.strip():
+        raise ValueError("Customer and account IDs must be nonempty strings.")
+    result = rpc("ripple_demo_ids", {"p_customer_id": customer_id, "p_account_id": account_id})
+    if result != {"customer_id": customer_id, "account_id": account_id}:
+        raise DatabaseError("Supabase did not confirm the saved demo IDs.")

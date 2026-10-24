@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import storage
+from app.database import DatabaseError
 from app.gemini import parse_receipt
 from app.models import ParsedReceipt
 from app.nessie import NessieClient, NessieError
@@ -57,6 +58,10 @@ def scan_receipt(file: UploadFile = File(...)) -> dict[str, Any]:
             raise HTTPException(status_code=502, detail=f"Receipt parsing failed. Check GEMINI_API_KEY and try a clearer image. {exc}") from exc
     try:
         return storage.save_receipt(parsed.model_dump())
+    except storage.InvalidReceiptError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except DatabaseError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Could not save receipt: {exc}") from exc
 

@@ -122,7 +122,46 @@ and an `income_total` for saved salary deposits. Receipts are not included.
 
 ## Nessie sandbox
 
-Use `GET /api/nessie/customers`, then
+The quickest path is the one-tap demo bank (the app's **Connect demo bank**
+button on Profile):
+
+```bash
+curl -X POST http://localhost:8000/api/nessie/demo-bank \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN"
+```
+
+It creates a sandbox customer and checking account, adds 15 purchases from the
+last month plus one paycheck deposit, links the account and imports it, then
+returns `{account_id, count, transactions, created}`. Calling it again does not
+create a second bank: it re-imports the linked account (`created: false`).
+Nessie stores whole-dollar amounts for purchases, deposits and transfers.
+
+The demo bank also gets six monthly bills and a `CATch savings` account. Each
+import stores, in the same `transactions` table:
+
+- purchases with their merchant's spending category (`groceries`, `restaurant`,
+  `household`, `health`, `transportation`, `other`);
+- upcoming bills as `transaction_type = 'bill'`, dated on their next payment
+  date (bills deleted in Nessie are removed);
+- deposits into `CATch savings` as `transaction_type = 'savings'`.
+
+Spending totals count only purchases and withdrawals, and income only paychecks,
+so bills, savings and transfers are never counted as spending or income. Calling
+`demo-bank` on a demo account made before bills existed adds its bills.
+
+Move money into savings (the app does this after you apply swaps on Compare):
+
+```bash
+curl -X POST http://localhost:8000/api/nessie/savings \
+  -H "Authorization: Bearer YOUR_SESSION_TOKEN" -H "Content-Type: application/json" \
+  -d '{"amount": 7.49, "description": "Tide Pods swap"}'
+```
+
+The amount is rounded to the nearest dollar (under $0.50 moves nothing). It is
+deposited into `CATch savings` (created on first use) and recorded as a transfer
+out of checking. The response is `{moved, savings_total}`.
+
+To link an existing sandbox account instead, use `GET /api/nessie/customers`, then
 `GET /api/nessie/customers/{customer_id}/accounts` to find a sandbox account.
 Link it with:
 

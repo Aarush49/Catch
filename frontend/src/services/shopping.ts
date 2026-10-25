@@ -10,9 +10,10 @@ export type ShoppingAlternative = {
 export type ComparedItem = { item_id: string; name: string; original_price: number | null; alternatives: ShoppingAlternative[]; potential_savings: number; error: string | null };
 export type ShoppingComparison = { items: ComparedItem[]; total_potential_savings: number };
 
-// shopping_items.category uses the backend's vocabulary (see backend/models.py ExpenseCategory).
+// shopping_items.category and bank purchase categories use the backend's vocabulary (backend/models.py ExpenseCategory).
 const toDb: Record<Category, string> = { Groceries: 'groceries', Dining: 'restaurant', Household: 'household', Health: 'health', Transport: 'transportation', Other: 'other' };
-const fromDb = (value?: string): Category => (Object.keys(toDb) as Category[]).find((key) => toDb[key] === value) ?? 'Other';
+export const categoryFromDb = (value?: string): Category => (Object.keys(toDb) as Category[]).find((key) => toDb[key] === value) ?? 'Other';
+const fromDb = categoryFromDb;
 const columns = 'id,name,price,category,completed';
 const toItem = (row: any): ShoppingItem => ({ id: row.id, name: row.name, price: row.price == null ? null : Number(row.price), category: fromDb(row.category), completed: Boolean(row.completed) });
 

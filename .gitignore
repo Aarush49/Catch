@@ -25,3 +25,5 @@ backend/.env
 .DS_Store
 Thumbs.db
 Desktop.ini
+# Generated static hosting output
+/dist/

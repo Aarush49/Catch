@@ -15,9 +15,21 @@ npx expo start
 ```
 
 Open the QR code in Expo Go or start an available simulator. The current Expo
-screens still use mock data and AsyncStorage (`frontend/src/store/AppStore.tsx`).
-They need API wiring before UI actions will create rows in Supabase. The backend
-integration below does not change that frontend behavior.
+screens use Supabase Auth and database-backed receipts. Copy `frontend/.env.example`
+to `frontend/.env` and fill in the Supabase URL and anon key. On a physical phone,
+`EXPO_PUBLIC_API_URL` must use your computer's LAN IP (for example
+`http://192.168.x.x:8000`), not localhost; the phone and computer must be on the
+same network. Set `EXPO_PUBLIC_DEMO_MODE=true` only for an offline mock demo.
+
+Start the API so phones on the LAN can reach it:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Create a Supabase project, run `supabase/schema.sql` in its SQL Editor, and copy
+the project values into the frontend and backend environment files. Obtain a
+Gemini API key from Google AI Studio and keep it only in the backend `.env`.
 
 ## Install and configure
 

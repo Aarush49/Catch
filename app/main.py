@@ -4,29 +4,31 @@ from typing import Any, Literal
 from uuid import UUID
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import storage
 from app.database import DatabaseError
-from app.gemini import parse_receipt
 from app.models import ParsedReceipt
 from app.nessie import NessieClient, NessieError
+from backend.services.receipt_scanner import scan_image
+from backend.services.supabase_jwt import require_supabase_user
 
 load_dotenv()
 
 app = FastAPI(title="Ripple API", description="Receipt and spending API")
+allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-ALLOWED_MIME = {"image/jpeg", "image/png", "image/heic", "image/heif"}
-MAX_IMAGE_BYTES = 15 * 1024 * 1024
+ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 @app.exception_handler(DatabaseError)
@@ -40,36 +42,21 @@ def health() -> dict[str, str]:
 
 
 @app.post("/receipts/scan")
-def scan_receipt(file: UploadFile = File(...)) -> dict[str, Any]:
+def scan_receipt(file: UploadFile = File(...), _user=Depends(require_supabase_user)) -> dict[str, Any]:
     mime_type = (file.content_type or "").lower()
     if mime_type not in ALLOWED_MIME:
-        raise HTTPException(status_code=415, detail="Upload a JPEG, PNG, or HEIC image.")
+        raise HTTPException(status_code=400, detail="Upload a JPEG, PNG, WebP, or HEIC image.")
     image_bytes = file.file.read(MAX_IMAGE_BYTES + 1)
     if not image_bytes:
         raise HTTPException(status_code=400, detail="The uploaded image is empty.")
     if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image must be 15 MB or smaller.")
-    if os.getenv("MOCK_MODE", "false").lower() == "true":
-        parsed = ParsedReceipt.model_validate({
-            "store_name": "Demo Market", "purchase_date": date.today().isoformat(),
-            "subtotal": "12.98", "tax": "1.04", "total": "14.02",
-            "items": [{"raw_name": "ORG BNLS CHKN BRST", "full_name": "Organic Boneless Chicken Breast",
-                       "category": "meat_seafood", "quantity": 1, "unit_price": "12.98", "total_price": "12.98"}],
-            "warnings": ["MOCK_MODE is enabled; this is sample receipt data."],
-        })
-    else:
-        try:
-            parsed = parse_receipt(image_bytes, mime_type)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Receipt parsing failed. Check GEMINI_API_KEY and try a clearer image. {exc}") from exc
+        raise HTTPException(status_code=413, detail="Image must be 8 MB or smaller.")
     try:
-        return storage.save_receipt(parsed.model_dump())
-    except storage.InvalidReceiptError as exc:
+        return scan_image(image_bytes, mime_type)
+    except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    except DatabaseError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Could not save receipt: {exc}") from exc
+        raise HTTPException(status_code=504, detail=str(exc)) from None
 
 
 @app.get("/receipts")

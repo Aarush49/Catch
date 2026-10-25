@@ -13,7 +13,7 @@ const screenOptions = { headerShown: false, animation: 'fade' as const, contentS
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ DMSans_400Regular, DMSans_500Medium, DMSans_700Bold });
-  return <TallyProvider><AuthProvider><RootNavigator fontsLoaded={fontsLoaded} /></AuthProvider></TallyProvider>;
+  return <AuthProvider><TallyProvider><RootNavigator fontsLoaded={fontsLoaded} /></TallyProvider></AuthProvider>;
 }
 
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {

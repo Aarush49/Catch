@@ -7,11 +7,12 @@ import { useAuth } from '../store/AuthProvider';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const { signIn } = useAuth();
   const submit = async () => {
     if (!email.trim() || !password) return Alert.alert('A couple details are missing', 'Enter your email and password to continue.');
-    await signIn(email.trim(), password);
-    router.replace('/home');
+    try { setError(''); await signIn(email.trim(), password); router.replace('/home'); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to sign in. Check your connection and try again.'); }
   };
-  return <AuthScreen mode="login" email={email} password={password} onEmailChange={setEmail} onPasswordChange={setPassword} onSubmit={submit} onSwitch={() => router.replace('/signup')} />;
+  return <AuthScreen mode="login" email={email} password={password} error={error} onEmailChange={setEmail} onPasswordChange={setPassword} onSubmit={submit} onSwitch={() => router.replace('/signup')} />;
 }

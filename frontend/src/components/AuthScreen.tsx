@@ -14,9 +14,10 @@ type AuthScreenProps = {
   onNameChange?: (value: string) => void;
   onSubmit: () => void;
   onSwitch: () => void;
+  error?: string;
 };
 
-export function AuthScreen({ mode, email, password, name = '', onEmailChange, onPasswordChange, onNameChange, onSubmit, onSwitch }: AuthScreenProps) {
+export function AuthScreen({ mode, email, password, name = '', onEmailChange, onPasswordChange, onNameChange, onSubmit, onSwitch, error }: AuthScreenProps) {
   const signup = mode === 'signup';
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.linen }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -34,6 +35,7 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
           {signup && <Field icon={User} label="NAME" value={name} placeholder="Your name" onChangeText={onNameChange!} autoCapitalize="words" />}
           <Field icon={Mail} label="EMAIL" value={email} placeholder="you@example.com" onChangeText={onEmailChange} keyboardType="email-address" autoCapitalize="none" />
           <Field icon={LockKeyhole} label="PASSWORD" value={password} placeholder={signup ? 'At least 8 characters' : 'Your password'} onChangeText={onPasswordChange} secureTextEntry />
+          {!!error && <Text style={{ color: C.tomato, fontSize: 11, lineHeight: 16 }}>{error}</Text>}
 
           {!signup && <Pressable style={{ alignSelf: 'flex-end', paddingVertical: 7 }}><Text style={{ fontSize: 10, fontWeight: '700', color: C.navy }}>Forgot password?</Text></Pressable>}
           <Pressable onPress={onSubmit} style={({ pressed }) => ({ minHeight: 54, borderRadius: 16, backgroundColor: C.navy, borderBottomWidth: pressed ? 1 : 5, borderBottomColor: '#002B53', transform: [{ translateY: pressed ? 4 : 0 }], flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 })}>

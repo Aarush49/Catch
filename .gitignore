@@ -13,6 +13,8 @@ data/*.db
 
 # Environment
 .env
+frontend/.env
+backend/.env
 
 # Editors
 .idea/

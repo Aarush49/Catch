@@ -1,6 +1,9 @@
-# Ripple
+# Ripple API
 
-Ripple is a FastAPI backend and React demo for receipt scanning, spending history, Nessie sandbox transactions, price comparisons, and purchase projections. User accounts and demo records persist in a local SQLite file at `data/ripple.sqlite3` (override with `RIPPLE_DB_PATH`).
+FastAPI backend and Expo UI for receipt scanning, spending history, Nessie
+banking, shopping comparisons, and financial predictions. Supabase stores users,
+sessions, bank links, transactions, receipts, receipt items, and shopping items.
+All application database requests use the Supabase Python SDK over HTTPS, normally port 443. No direct PostgreSQL connection is used.
 
 ## Frontend
 
@@ -10,233 +13,274 @@ npm install
 npx expo start
 ```
 
-Open the QR code in Expo Go, or press `a` for Android / `i` for iOS when a simulator is available.
+Open the QR code in Expo Go or start an available simulator. The current Expo
+screens still use mock data and AsyncStorage (`frontend/src/store/AppStore.tsx`).
+They need API wiring before UI actions will create rows in Supabase. The backend
+integration below does not change that frontend behavior.
 
-## Backend
+## Install and configure
 
-Requires Python 3.10+ (tested with Python 3.13). Run these commands from the
-repository root:
+Requires Python 3.11+ and a Supabase project. From the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r backend/requirements.txt
-cp .env.example .env
-# Set GEMINI_API_KEY, SERPAPI_KEY, and (for Nessie) NESSIE_API_KEY in .env.
-uvicorn backend.main:app --reload
+pip install -r requirements.txt
 ```
 
-On Windows, create the environment with `python -m venv .venv`, activate with
-`.venv\Scripts\Activate.ps1`, and use `copy .env.example .env`. Install the
-updated requirements again after pulling changes: `pip install -r backend/requirements.txt`.
+On Windows use `python -m venv .venv` and `.venv\Scripts\activate`.
+The root `requirements.txt` contains the backend dependencies and pytest. The
+database package is `supabase`; psycopg is no longer required.
 
-The UI signup and login use the local API. Passwords are stored as salted
-PBKDF2 hashes; session tokens are stored as hashes. To create a repeatable local
-demo account and sample purchase, salary, and withdrawal history, run from the
-repository root:
+Copy `.env.example` to `.env` if you do not already have one. Existing `.env`
+files should be edited rather than overwritten. The backend loads the root
+`.env` regardless of the working directory; process environment variables take
+precedence.
 
-```bash
-python scripts/seed_sqlite_demo.py
+```dotenv
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_YOUR_BACKEND_KEY
 ```
 
-Demo login: `demo@ripple.local` / `RippleDemo123!`. The SQLite file is local and
-gitignored. Delete `data/ripple.sqlite3` to reset the demo database.
-
-The existing API health check is available at `http://localhost:8000/health`.
-Interactive API documentation is at `http://localhost:8000/docs`.
-
-## Environment variables
-
-The backend loads the repository-root `.env` automatically; existing process
-environment variables take precedence. Keep `.env` private (it is gitignored)
-and never place secrets in frontend environment variables.
+Use the project's HTTPS URL from the Supabase dashboard and its backend secret
+key from API key settings. The URL is not a PostgreSQL connection string and
+should not include `/rest/v1`. A legacy `service_role` JWT is also accepted in
+`SUPABASE_SECRET_KEY`; publishable and anon keys are rejected by the backend.
+See [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys).
 
 | Variable | Purpose |
 | --- | --- |
-| `SERPAPI_KEY` | Required for shopping search; get a key from [SerpAPI](https://serpapi.com/manage-api-key). Backend only. |
-| `NESSIE_API_KEY` | Required for Nessie customer, account, and transaction requests. |
-| `GEMINI_API_KEY` | Required for receipt scanning; also enables generated prediction copy. |
-| `GEMINI_MODEL` | Optional; defaults to `gemini-3.8-flash`. |
-| `RIPPLE_DB_PATH` | Optional; SQLite file path, defaults to `data/ripple.sqlite3`. |
+| `SUPABASE_URL` | Required project HTTPS base URL. |
+| `SUPABASE_SECRET_KEY` | Required backend-only secret with service-role access. |
+| `GEMINI_API_KEY` | Required for real receipt parsing. |
+| `GEMINI_MODEL` | Optional shared model override; choose a model enabled for your key. |
+| `MOCK_MODE` | Sample parsing for the legacy `/receipts/scan` route only; `/api/receipts/scan` uses Gemini. Supabase is still required. |
+| `NESSIE_API_KEY` | Required only for Nessie routes. |
+| `SERPAPI_KEY` | Required for shopping comparisons and alternatives. |
 
-## Account and bank data
+`DATABASE_URL` and Tiger Data credentials are no longer read by this integration.
+Keep `.env` out of Git. The Supabase secret must stay on the backend; never put it
+in an Expo/Vite public environment variable, browser bundle, or mobile app.
 
-`POST /api/auth/signup` and `POST /api/auth/login` accept `email` and
-`password` (minimum 8 characters), and return a bearer token. Send it as
-`Authorization: Bearer <token>` for user data endpoints. `GET /api/auth/me`
-returns the signed-in user; `POST /api/auth/logout` invalidates that session.
+## Install the Supabase schema
 
-Nessie is a Capital One **sandbox**, not a connection to a real bank. With a
-sandbox API key configured, list sandbox customers and accounts, then call
-`POST /api/nessie/link` with the chosen IDs. `GET /api/nessie/transactions`
-fetches and stores that account's purchases, deposits, withdrawals, and
-transfers. Deposits whose description says salary/payroll/paycheck/wages are
-marked as salary income. The endpoint returns the stored history. Requests
-require the signed-in user's bearer token.
+1. Open your Supabase project and select **SQL Editor → New query**.
+2. Paste the complete contents of `schema.sql`, review it, and click **Run**.
+3. In the Data API settings, ensure the Data API is enabled and the `public`
+   schema is exposed. Keep `ripple_private` out of the exposed schemas list.
+4. From your project terminal, verify HTTPS access:
 
-## Shopping alternatives
+   ```bash
+   python -m scripts.init_db
+   ```
 
-`GET /api/shopping/alternatives` searches one page of SerpAPI's
-[`google_shopping` engine](https://serpapi.com/google-shopping-api) in the US and
-returns up to three cheaper, potentially comparable listings, ordered by highest
-potential savings. No other engines or integrations are called.
+The command is now read-only. It calls `ripple_check` and prints:
 
-| Query parameter | Required | Description |
-| --- | --- | --- |
-| `query` | Yes | Product name, 1–200 characters; include model, size, or capacity when known. |
-| `original_price` | Yes | Finite, positive original price in USD. |
-| `brand` | No | Brand name, 1–100 characters; included in search and title matching. |
+```text
+Supabase HTTPS connection and Ripple schema verified. No schema changes were executed.
+```
+
+The SDK cannot install arbitrary SQL through the Data API. The SQL Editor step
+is required; the verification command does not create tables or functions.
+A missing-function/schema error means you should run the current `schema.sql`
+and allow its PostgREST schema-cache refresh to finish.
+
+The script runs in a transaction and is idempotent: it creates missing tables,
+indexes, and functions without deleting rows. It upgrades the known receipt-only
+schema to version 2 by adding account credential columns, carbon estimates, four
+new tables, and their RPCs. It widens the receipt category constraint to accept
+`utilities`, and reapplies RLS/grants on all seven tables. Existing receipt/user
+IDs and rows are retained. It does not migrate records from a local SQLite file
+or Tiger Data, or repair arbitrary incompatible schemas. Those would require separate,
+reviewed migrations. No schema script is executed automatically by FastAPI.
+
+## Run and use the API
 
 ```bash
-curl --get 'http://localhost:8000/api/shopping/alternatives' \
-  --data-urlencode 'query=Nike Air Force 1' \
-  --data-urlencode 'original_price=120' \
-  --data-urlencode 'brand=Nike'
+uvicorn backend.main:app --reload
 ```
 
-Illustrative response (not a live offer; optional missing fields are `null`):
+Interactive docs: `http://localhost:8000/docs`. Application health:
+`http://localhost:8000/health`; this route does not check Supabase connectivity.
+Both `backend.main:app` and `app.main:app` expose the same combined application.
+Main's authenticated `/api/*` routes and the earlier legacy routes retain their
+successful response formats. Database failures return sanitized HTTP 503 errors.
+No SQLite file is created during startup.
 
-```json
-{
-  "query": "Nike Air Force 1",
-  "original_price": 120.0,
-  "alternatives": [
-    {
-      "title": "Nike Air Force 1 Low White",
-      "price": 90.0,
-      "source": "Example Merchant",
-      "rating": null,
-      "link": "https://example.com/products/air-force-1",
-      "thumbnail": null,
-      "product_id": null,
-      "match_type": "similar_alternative",
-      "match_reason": "All requested name and brand terms match; additional title details may indicate a different variant.",
-      "potential_savings": 30.0,
-      "potential_savings_percent": 25.0
-    }
-  ],
-  "currency": "USD",
-  "savings_note": "Potential savings compare listing prices only. Product equivalence is not verified; check model, size, quantity, condition, and seller. Shipping and taxes may be additional, and the original price may include different costs."
-}
-```
+For the authenticated API, sign up or log in at `POST /api/auth/signup` or
+`POST /api/auth/login` with JSON `{"email":"you@example.com","password":"your-password"}`.
+Use the returned `access_token` in `Authorization: Bearer YOUR_ACCESS_TOKEN`.
+Sessions last 30 days; `POST /api/auth/logout` revokes the current session.
 
-Every requested name and brand token must appear in the listing title, including
-model numbers. `exact_title_match` means only that the title matches after case
-and punctuation normalization. `similar_alternative` means all required terms
-appear with additional details. Neither classification verifies equivalence;
-product IDs are retained but cannot identify the original product because the
-request contains no original ID. This intentionally conservative heuristic can
-miss valid alternatives and can still admit different variants or pack sizes.
-It does not infer sustainability, authenticity, or availability.
-
-Invalid listings, common accessories not requested by name, explicitly secondhand
-listings, installment offers, ambiguous prices, and explicitly non-USD prices are
-excluded. Numeric prices without a currency label are treated as USD because the
-search uses US localization. Listing prices are normalized to cents. Savings are
-calculated with Python `Decimal` and rounded to cents using half-up rounding;
-percentages use the unrounded difference and are rounded to two decimal places.
-Differences that round to zero cents are omitted. Shipping and tax are not added
-or assumed to be included. Compare the original price on the same basis.
-
-No results or no qualifying cheaper listings returns HTTP 200 with
-`"alternatives": []`. Errors use FastAPI's `{"detail": "..."}` format:
-
-| Status | Meaning |
+| Route | Purpose |
 | --- | --- |
-| `422` | Missing, blank, oversized, or invalid query parameters; nonpositive or nonfinite price. |
-| `502` | Provider HTTP/network failure, API error payload, or malformed response. |
-| `503` | Missing `SERPAPI_KEY`, or provider HTTP 401/403/429 (credentials/quota). |
-| `504` | Provider request timed out (15-second HTTP timeout). |
+| `GET /api/auth/me` | Signed-in user profile. |
+| `POST /api/receipts/scan` | Authenticated receipt scan; returns store/date/items/carbon estimates. |
+| `GET /api/receipts`, `GET /api/receipts/{id}` | The signed-in user's receipt history/details. |
+| `GET/POST /api/shopping-list/items`, `DELETE /api/shopping-list/items/{id}` | Per-user shopping list. |
+| `POST /api/shopping-list/done` | Compare the current shopping list with SerpAPI. |
+| `GET /api/nessie/customers`, `GET /api/nessie/customers/{id}/accounts` | Nessie sandbox lookup. |
+| `POST /api/nessie/link`, `GET /api/nessie/transactions` | Link a bank account and upsert imported transactions for this user. |
+| `GET /api/spending/history` | Main's bank expense/income history; does not double-count receipt lines. |
+| `GET /api/shopping/alternatives` | Existing product alternatives search. |
+| `POST /api/predictions` | Existing long-term projections. |
 
-Provider error text, request URLs, and API keys are not included in public errors.
-The endpoint makes one search request without automatic retries. Normalized
-results are cached in process memory for 15 minutes (up to 256 queries), reducing
-repeat SerpAPI use during a demo. The cache is cleared when the backend restarts.
+See [the API reference](docs/API.md) for the imported shopping, carbon, bank, and prediction details.
 
-## Receipts and carbon
-
-Upload a JPEG, PNG, or WebP image (up to 15 MB) as multipart field `file`:
+Example authenticated scan:
 
 ```bash
 curl -X POST http://localhost:8000/api/receipts/scan \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -F 'file=@receipt.jpg;type=image/jpeg'
+```
+
+For a controlled demo, optionally run `python -m scripts.seed_supabase_demo`.
+This writes an account and four repeatable sample transactions to Supabase.
+The default demo login is `demo@ripple.local` / `RippleDemo123!`; override it with
+`RIPPLE_DEMO_EMAIL` and `RIPPLE_DEMO_PASSWORD` for a private demo. Re-running
+updates the same external transaction IDs. The legacy command
+`python scripts/seed_sqlite_demo.py` delegates to this Supabase seed and no longer
+opens SQLite.
+
+The earlier receipt-only endpoints below remain available for compatibility.
+They use a shared demo user rather than the signed-in user's identity.
+
+Upload a JPEG, PNG, HEIC, or HEIF receipt up to 15 MB:
+
+```bash
+curl -X POST http://localhost:8000/receipts/scan \
   -F "file=@receipt.jpg;type=image/jpeg"
 ```
 
-Gemini returns the store, date, receipt total, and item names, prices, and
-categories. The API adds `carbon_kg_co2e` to each item using a hardcoded
-category-by-dollar estimate. These factors are illustrative, not product-level
-life-cycle measurements. Read scans with `GET /api/receipts` and
-`GET /api/receipts/{receipt_id}`.
+For a scan without Gemini, set `MOCK_MODE=true` before starting FastAPI. Mock mode
+returns sample receipt data for a nonempty upload with an allowed MIME type.
 
-## Spending history
+Other routes:
 
-`GET /api/spending/history?days=90` returns daily, Monday-start weekly, and
-monthly totals for the selected recent date range, scanned receipt items,
-persisted bank expenses, and an `income_total` for saved salary deposits. A
-purchase present in both receipt and bank sources can be counted twice.
+- `GET /receipts` and `GET /receipts/{id}`: saved receipt history and details.
+- `GET /items?category=produce&start=2026-10-01&end=2026-10-24`: item filtering with inclusive dates.
+- `GET /spending/summary?period=month`: rolling `week` (7 days), `month` (30 days), or `all`, grouped by category and UTC day.
 
-## Nessie sandbox
-
-Use `GET /api/nessie/customers`, then
-`GET /api/nessie/customers/{customer_id}/accounts` to find a sandbox account.
-Link it with:
+Create/reuse the Nessie demo account and seed 15 sample purchases:
 
 ```bash
-curl -X POST http://localhost:8000/api/nessie/link \
-  -H "Authorization: Bearer YOUR_SESSION_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"customer_id":"CUSTOMER_ID","account_id":"ACCOUNT_ID"}'
+curl -X POST http://localhost:8000/nessie/setup
+curl -X POST http://localhost:8000/nessie/seed
+curl http://localhost:8000/nessie/transactions
 ```
 
-Then call `GET /api/nessie/transactions` with the same bearer token to fetch the account history. Nessie
-credentials stay in backend `.env`; requests use HTTPS. Linked account and
-imported transactions persist per user in SQLite.
+To verify persistence, upload a receipt, record its `id`, restart FastAPI, and
+retrieve `GET /receipts/{id}` using the same Supabase project. The receipt and
+items should remain available. Supabase API errors and HTTPS timeouts return
+sanitized database errors through the existing 503 handlers. Invalid receipt
+item quantities or negative prices return 422.
 
-## Shopping list
+## Storage and atomic receipt creation
 
-Add an item with `POST /api/shopping-list/items`, for example:
+| Table | Contents |
+| --- | --- |
+| `public.users` | UUID, legacy username, optional unique email and salted PBKDF2 password hash, creation time and legacy demo IDs. Separate from `auth.users`. |
+| `public.sessions` | SHA-256 session token hashes, user reference and expiry; plaintext tokens are never stored. |
+| `public.linked_accounts` | One Nessie customer/account link per user. |
+| `public.transactions` | Per-user bank/demo transactions; exact amounts and unique `(user_id, source, external_id)` import keys. |
+| `public.shopping_items` | Per-user products, prices, brands, categories and quality preference. |
+| `public.receipts` | Owning user, merchant/date/totals, raw parsed JSON and creation time. |
+| `public.receipt_items` | Owning receipt, raw/expanded name, category, quantity/prices, timestamps and line order. |
 
-```json
-{"name":"Acme Widget","price":30,"brand":"Acme","category":"electronics","allow_lower_quality":false}
-```
+Foreign keys connect users → receipts → items. Deleting a receipt cascades to
+its items; users with receipts cannot be deleted. Constraints validate required
+fields, positive quantities, allowed categories, and finite nonnegative prices.
+Indexes support user history, receipt lines, categories, and purchase dates.
+Money and quantities use PostgreSQL `NUMERIC` without fixed-scale rounding.
+Refunds/negative item prices are not supported by this MVP.
 
-Read or remove items with `GET /api/shopping-list/items` and
-`DELETE /api/shopping-list/items/{item_id}`. When the user finishes the list,
-call `POST /api/shopping-list/done`. The response contains alternatives for each
-item and `total_potential_savings`, based on each item's best listed saving.
-With `allow_lower_quality: false`, only exact normalized-title matches are
-returned; `true` also allows similar-title matches. Neither mode proves product
-equivalence or quality.
+`app/storage.py` keeps its public functions, including optional `user_id`
+arguments. Legacy receipt-only endpoints have no user identity and use the shared
+`ripple-demo` user. User helpers do not provide authentication. The SQL fields
+`merchant`/`expanded_name` map to the existing `store_name`/`full_name` response
+fields. Raw JSON, warnings, UUIDs, dates, timestamps, and item order are retained.
+The new `backend/services/supabase_store.py` adapts the SQLite-era function
+contracts to these same tables/RPCs. Main's `name`/`price` item fields map to
+`expanded_name`/`total_price`; carbon estimates are stored in `carbon_kg_co2e`.
+Line ownership is derived from the parent receipt rather than duplicating its
+user ID. Old lines without an estimate initialize to zero; new scans persist the
+estimated value. The previous `sqlite_store` module is only an import shim.
 
-## Future-value projection
+Every save calls **one** `ripple_save_receipt` RPC. This PostgreSQL function
+creates the demo user if needed, inserts the receipt and every item, and returns
+the saved document in one transaction. An invalid second item rolls back the
+entire save. There are no separate client-side insert calls or swallowed SQL
+exceptions. See [Supabase database functions](https://supabase.com/docs/guides/database/functions).
 
-`POST /api/predictions` accepts `amount`, optional `alternative_amount`, `years`
-(default 30), and `annual_return` (default 0.07). It compounds the difference
-between the original and alternative amounts. Add `times_per_month` for
-annualized recurring spend and a recurring projection. Gemini writes the short
-explanation when available; the calculation still returns a fallback sentence
-if Gemini is unavailable.
+Read RPCs return numeric values as decimal **strings**, which Python restores to
+`Decimal` before FastAPI serializes responses. This prevents precision loss from
+the SDK's normal JSON float parsing, including for spending aggregates. Small
+JSON helpers live in the unexposed `ripple_private` schema. Collection RPCs return
+JSON arrays, avoiding silent truncation by the Data API's table row limit; very
+large histories may need pagination in a future API version.
 
-```json
-{"amount":50,"alternative_amount":35,"years":30,"annual_return":0.07,"times_per_month":2}
-```
+HTTPS calls have a 15-second timeout, use closed HTTP transport contexts, and do
+not automatically retry writes. If a response is lost after a commit, the client
+cannot know whether the save succeeded; check history before retrying. Receipt
+uploads currently have no idempotency key.
 
-## Backend tests
+## Access controls
 
-From the repository root, with the virtual environment activated:
+All seven tables have RLS enabled. The schema grants no table access to `PUBLIC`,
+`anon`, or `authenticated`, and creates no permissive client policies. It also
+revokes execution on every Ripple RPC from those roles. Only `service_role`
+receives table SELECT/INSERT/UPDATE and function EXECUTE privileges, plus DELETE
+on sessions and shopping items for logout and list removal. All RPCs use
+`SECURITY INVOKER`, an empty search path, and schema-qualified references.
+Supabase secret keys run with service-role privileges and bypass RLS, which is
+why the key stays exclusively on the backend.
+
+Main's private `/api/*` routes use the existing backend login/session flow and
+scope database operations to the verified session's user. Authentication remains
+custom PBKDF2 plus opaque session tokens for compatibility; it does not use
+Supabase Auth. Keep the shared legacy demo endpoints and public demo seed out of
+a production deployment. CORS remains enabled for the demo; configure trusted
+origins and production authentication controls before a public launch.
+
+## Tests
 
 ```bash
-pip install -r backend/requirements-dev.txt
-python -m pytest backend/tests -q
+pip install -r requirements.txt
+python -m pytest -q
 ```
 
-Tests mock all SerpAPI HTTP calls and replace local credentials with a fake key.
-They cover normalization, missing/invalid prices and optional fields, matching and
-accessory exclusions, cheaper-price filtering, decimal savings, sorting and the
-three-result limit, deduplication, credentials, HTTP/API/JSON/network failures,
-timeouts, endpoint validation, response schemas, and the existing health route.
-Use the curl example above for an optional live smoke test with a configured key;
-it can consume one search credit.
+Default tests exercise the **real Supabase SDK** against mocked HTTPS responses.
+They replace local credentials, make no cloud calls, and mock Gemini/Nessie in
+route tests. Coverage includes receipt/line response contracts, exact decimals,
+user helpers and scoping parameters, filters, summaries, single-RPC saves,
+validation, missing/incorrect credentials, failed requests, timeout behavior,
+transport cleanup, error redaction, and health/Nessie endpoint compatibility.
 
-Account data persists in SQLite and is separated per signed-in user. The SerpAPI
-result cache is process-local and clears when the API restarts.
+For actual SQL transaction, constraint, precision, and RLS/grant regression
+checks, review and run `tests/sql/test_storage.sql` and
+`tests/sql/test_authenticated_storage.sql` in the SQL Editor after
+installing the schema. All its test writes are enclosed in a transaction that
+ends with `ROLLBACK`. If it fails, roll back the open transaction before
+continuing. It does not delete existing data or alter tables.
+
+Optional read-only live SDK tests require explicit opt-in and separate test
+credentials; application credentials are never used automatically:
+
+```bash
+export TEST_SUPABASE_URL='https://YOUR_TEST_PROJECT.supabase.co'
+export TEST_SUPABASE_SECRET_KEY='YOUR_TEST_BACKEND_SECRET'
+# Optional: also set TEST_SUPABASE_PUBLISHABLE_KEY for anonymous-denial checks.
+python -m pytest tests/integration --run-db-integration -q
+```
+
+On PowerShell use `$env:VARIABLE='value'` instead of `export`. Live tests verify
+schema access and reads; they never insert/delete cloud records. The SQL Editor
+checks verify transaction rollback and role grants inside PostgreSQL itself.
+
+The default pytest command includes both `tests/` and `backend/tests/`, including
+the imported SerpAPI tests. Merge integration tests cover signup/login/logout,
+hashed credentials/tokens, per-user receipt/transaction/shopping calls, carbon
+persistence, banking imports, and both API entry points. SQL tests cover fresh
+installation and the receipt-only schema upgrade, atomic batch/receipt rollback,
+transaction deduplication, session expiry/revocation, ownership, and role grants.

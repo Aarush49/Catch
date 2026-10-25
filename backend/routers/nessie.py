@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.models import NessieLinkRequest
 from backend.routers.auth import current_user
-from backend.services import sqlite_store
+from backend.services import supabase_store
 from backend.services.nessie_service import (
     NessieServiceError,
     accounts,
@@ -45,13 +45,13 @@ def link_account(request: NessieLinkRequest, user=Depends(current_user)) -> dict
     found = _provider_call(accounts, customer_id)
     if not any(str(account.get("_id") or account.get("id")) == account_id for account in found):
         raise HTTPException(status_code=404, detail="That account was not found for the selected customer.")
-    sqlite_store.save_link(user["id"], customer_id, account_id)
+    supabase_store.save_link(user["id"], customer_id, account_id)
     return {"customer_id": customer_id, "account_id": account_id, "status": "linked"}
 
 
 @router.get("/transactions")
 def get_transactions(user=Depends(current_user)) -> dict[str, Any]:
-    linked = sqlite_store.get_link(user["id"])
+    linked = supabase_store.get_link(user["id"])
     if not linked:
         raise HTTPException(status_code=409, detail="Link a Nessie account with POST /api/nessie/link first.")
     imported=[]
@@ -60,5 +60,5 @@ def get_transactions(user=Depends(current_user)) -> dict[str, Any]:
         for raw in raw_rows:
             if isinstance(raw,dict) and (normalized:=normalize_purchase(raw,kind)) is not None:
                 imported.append(normalized)
-    count=sqlite_store.upsert_transactions(user["id"],imported)
-    return {"account_id":linked["account_id"],"count":count,"transactions":sqlite_store.transactions(user["id"])}
+    count=supabase_store.upsert_transactions(user["id"],imported)
+    return {"account_id":linked["account_id"],"count":count,"transactions":supabase_store.transactions(user["id"])}

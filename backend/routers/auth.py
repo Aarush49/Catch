@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
-from backend.services import sqlite_store
+from backend.services import supabase_store
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 bearer = HTTPBearer(auto_error=False)
@@ -18,7 +18,7 @@ class Credentials(BaseModel):
 def current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]):
     if credentials is None:
         raise HTTPException(status_code=401, detail="Sign in to access this data.", headers={"WWW-Authenticate": "Bearer"})
-    user = sqlite_store.session_user(credentials.credentials)
+    user = supabase_store.session_user(credentials.credentials)
     if user is None:
         raise HTTPException(status_code=401, detail="Session expired. Please sign in again.", headers={"WWW-Authenticate": "Bearer"})
     return user
@@ -27,18 +27,18 @@ def current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Dep
 @router.post("/signup", status_code=201)
 def signup(request: Credentials):
     try:
-        user = sqlite_store.create_user(str(request.email), request.password)
+        user = supabase_store.create_user(str(request.email), request.password)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
-    return {"user": user, "access_token": sqlite_store.create_session(user["id"]), "token_type": "bearer"}
+    return {"user": user, "access_token": supabase_store.create_session(user["id"]), "token_type": "bearer"}
 
 
 @router.post("/login")
 def login(request: Credentials):
-    user = sqlite_store.authenticate(str(request.email), request.password)
+    user = supabase_store.authenticate(str(request.email), request.password)
     if user is None:
         raise HTTPException(status_code=401, detail="Email or password is incorrect.")
-    return {"user": user, "access_token": sqlite_store.create_session(user["id"]), "token_type": "bearer"}
+    return {"user": user, "access_token": supabase_store.create_session(user["id"]), "token_type": "bearer"}
 
 
 @router.get("/me")
@@ -48,4 +48,4 @@ def me(user=Depends(current_user)):
 
 @router.post("/logout", status_code=204)
 def logout(credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)], user=Depends(current_user)):
-    sqlite_store.delete_session(credentials.credentials)
+    supabase_store.delete_session(credentials.credentials)

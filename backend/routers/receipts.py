@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from backend.services.carbon import estimate_carbon
 from backend.services.gemini_service import GeminiReceiptError, parse_receipt
 from backend.routers.auth import current_user
-from backend.services.sqlite_store import get_receipt, list_receipts, save_receipt
+from backend.services.supabase_store import get_receipt, list_receipts, save_receipt
 
 
 router = APIRouter(prefix="/api/receipts", tags=["receipts"])

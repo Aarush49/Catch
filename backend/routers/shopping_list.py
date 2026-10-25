@@ -8,7 +8,7 @@ from backend.models import (
     ShoppingListItemCreate,
 )
 from backend.routers.auth import current_user
-from backend.services.sqlite_store import add_shopping_item, delete_shopping_item, list_shopping_items
+from backend.services.supabase_store import add_shopping_item, delete_shopping_item, list_shopping_items
 from backend.services.serpapi_service import ShoppingServiceError, find_alternatives
 
 

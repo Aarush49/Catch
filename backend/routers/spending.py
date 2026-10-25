@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from backend.routers.auth import current_user
-from backend.services.sqlite_store import ledger_entries, transactions
+from backend.services.supabase_store import ledger_entries, transactions
 
 
 router = APIRouter(prefix="/api/spending", tags=["spending"])

@@ -3,7 +3,7 @@ node_modules/
 dist/
 .expo/
 
-# Python
+# Python and local database artifacts
 __pycache__/
 *.py[cod]
 .venv/

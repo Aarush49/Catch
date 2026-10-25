@@ -1,8 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="440" height="120" viewBox="0 0 440 120" role="img" aria-labelledby="title desc">
   <title id="title">Catch</title>
-  <desc id="desc">The word Catch, with Cat in yellow and ch in white.</desc>
-  <rect width="440" height="120" rx="20" fill="#003A70"/>
+  <desc id="desc">The word Catch, with Cat in yellow.</desc>
+  <style>
+    .suffix { fill: #003A70; }
+    @media (prefers-color-scheme: dark) { .suffix { fill: #FFFFFF; } }
+  </style>
   <text x="28" y="82" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="700">
-    <tspan fill="#FBBF24">Cat</tspan><tspan fill="#FFFFFF">ch</tspan>
+    <tspan fill="#FBBF24">Cat</tspan><tspan class="suffix">ch</tspan>
   </text>
 </svg>

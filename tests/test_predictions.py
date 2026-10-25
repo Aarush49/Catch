@@ -140,7 +140,7 @@ def test_unusable_gemini_replies_fall_back(client, gemini, reply, finish):
     ("gemini-2.0-flash", None),
 ])
 def test_explanations_skip_thinking_so_the_sentence_fits(client, gemini, monkeypatch, model, expected):
-    monkeypatch.setenv("GEMINI_MODEL", model)
+    monkeypatch.setenv("GEMINI_EXPLANATION_MODEL", model)
     assert client.post("/api/predictions", json={"amount": 18, "times_per_month": 4, "years": 10}).json()["explanation_source"] == "gemini"
     config = gemini.calls[0].config
     assert config.max_output_tokens == 256
@@ -148,6 +148,31 @@ def test_explanations_skip_thinking_so_the_sentence_fits(client, gemini, monkeyp
         assert config.thinking_config is None
     else:
         assert all(getattr(config.thinking_config, key) == value for key, value in expected.items())
+
+
+def test_explanations_use_their_own_fast_model(client, gemini, monkeypatch):
+    monkeypatch.delenv("GEMINI_EXPLANATION_MODEL", raising=False)
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.8-flash")
+    client.post("/api/predictions", json={"amount": 18, "times_per_month": 4, "years": 10})
+    assert gemini.calls[0].model == "gemini-3.5-flash"
+
+
+def test_model_rejecting_minimal_thinking_is_retried_with_low(client, monkeypatch):
+    calls = []
+
+    def generate_content(model, contents, config):
+        calls.append(config.thinking_config.thinking_level)
+        if config.thinking_config.thinking_level == types.ThinkingLevel.MINIMAL:
+            raise errors.ClientError(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT",
+                "message": "Thinking level MINIMAL is not supported for this model. Please retry with other thinking level."}})
+        return gemini_response(contents)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key-never-real")
+    monkeypatch.setenv("GEMINI_EXPLANATION_MODEL", "gemini-3.8-flash")
+    monkeypatch.setattr(gemini_service.genai, "Client", lambda api_key: SimpleNamespace(models=SimpleNamespace(generate_content=generate_content)))
+    body = client.post("/api/predictions", json={"amount": 18, "times_per_month": 4, "years": 10}).json()
+    assert body["explanation_source"] == "gemini"
+    assert calls == [types.ThinkingLevel.MINIMAL, types.ThinkingLevel.LOW]
 
 
 def test_repeated_inputs_reuse_gemini_sentence_and_requests_time_out(client, gemini):

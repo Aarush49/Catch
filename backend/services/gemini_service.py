@@ -3,6 +3,7 @@
 import os
 import re
 import json
+import time
 from io import BytesIO
 from datetime import date, datetime
 
@@ -182,14 +183,42 @@ def _prepare_receipt_images(data: bytes, mime_type: str) -> tuple[bytes, str, li
         return data, mime_type, []
 
 
+# The Gemini API rejects deadlines under 10 seconds.
+EXPLANATION_TIMEOUT_MS = 10_000
+# After a quota error, use the fallback for a while instead of spending the shared quota (and seconds) on every slider move.
+QUOTA_PAUSE_SECONDS = 60
+_explanations: dict[tuple, str] = {}
+_explanations_paused_until = 0.0
+
+
+def _quota_pause_seconds(error: errors.APIError) -> float:
+    """Gemini's suggested retry delay (seconds for per-minute limits, much longer for daily ones), within sane bounds."""
+    details = (error.details or {}).get("error", {}).get("details", []) if isinstance(error.details, dict) else []
+    for item in details:
+        delay = str(item.get("retryDelay", "")) if isinstance(item, dict) else ""
+        if re.fullmatch(r"\d+(\.\d+)?s", delay):
+            return min(max(float(delay[:-1]), 5.0), 3600.0)
+    return QUOTA_PAUSE_SECONDS
+
+
+def _thinking_config(model: str) -> dict:
+    # Thinking tokens count against max_output_tokens; one sentence needs none.
+    if model.startswith(("gemini-3", "gemini-4")):
+        level = types.ThinkingLevel.MINIMAL if "flash" in model else types.ThinkingLevel.LOW
+        return {"thinking_config": types.ThinkingConfig(thinking_level=level)}
+    if model.startswith("gemini-2.5-flash"):
+        return {"thinking_config": types.ThinkingConfig(thinking_budget=0)}
+    return {}
+
+
 def explain_future_savings(
     future_savings: float,
     years: int,
     annual_return: float,
     recurring: bool = False,
     alternative: bool = False,
-) -> str:
-    """Ask Gemini for one plain sentence; use a deterministic fallback if unavailable."""
+) -> tuple[str, bool]:
+    """One plain sentence and whether Gemini wrote it; a deterministic fallback is used if Gemini is unavailable."""
     amount = f"${future_savings:,.2f}"
     subject = (
         "choosing the lower-cost recurring option" if recurring and alternative else
@@ -197,13 +226,28 @@ def explain_future_savings(
         "choosing the lower-cost option" if alternative else
         "skipping this purchase"
     )
+    if future_savings <= 0:
+        return "This choice doesn't save anything compared with the original, so there's nothing to grow.", False
     fallback = f"By {subject}, you could have about {amount} after {years} years."
+    # Slider-driven requests repeat the same inputs; only Gemini's successes are cached, so failures are retried.
+    key = (amount, years, round(annual_return, 6), recurring, alternative)
+    if key in _explanations:
+        return _explanations[key], True
+    global _explanations_paused_until
+    if time.monotonic() < _explanations_paused_until:
+        return fallback, False
     try:
         model = _model_name()
-        config = {"max_output_tokens": 60}
+        config = {
+            "max_output_tokens": 256,
+            "http_options": types.HttpOptions(timeout=EXPLANATION_TIMEOUT_MS, retry_options=types.HttpRetryOptions(attempts=1)),
+            **_thinking_config(model),
+        }
         if not model.startswith(("gemini-3", "gemini-4")):
             config["temperature"] = 0.2
-        response = _client().models.generate_content(
+        # Keep the client referenced: google-genai closes its HTTP connection when the Client is garbage collected.
+        client = _client()
+        response = client.models.generate_content(
             model=model,
             contents=(
                 "Write exactly one plain, friendly sentence for a consumer finance app. "
@@ -213,11 +257,20 @@ def explain_future_savings(
             ),
             config=types.GenerateContentConfig(**config),
         )
-        text = (response.text or "").strip().replace("\n", " ")
-        if text:
-            text = text.strip('" ')
-            sentence = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0].strip()
-            return sentence if sentence.endswith((".", "!", "?")) else f"{sentence}."
+        candidate = response.candidates[0] if response.candidates else None
+        truncated = candidate is not None and candidate.finish_reason == types.FinishReason.MAX_TOKENS
+        text = (response.text or "").strip().replace("\n", " ").strip('" ')
+        sentence = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0].strip() if text else ""
+        # Only show sentences that state the projected amount; anything else is truncated or invented.
+        if sentence and not truncated and amount.split(".")[0] in sentence:
+            sentence = sentence if sentence.endswith((".", "!", "?")) else f"{sentence}."
+            if len(_explanations) >= 512:
+                _explanations.pop(next(iter(_explanations)))
+            _explanations[key] = sentence
+            return sentence, True
+    except errors.APIError as error:
+        if error.code == 429:
+            _explanations_paused_until = time.monotonic() + _quota_pause_seconds(error)
     except Exception:
         pass
-    return fallback
+    return fallback, False

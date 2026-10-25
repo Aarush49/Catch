@@ -196,12 +196,25 @@ equivalence or quality.
 
 ## Future-value projection
 
-`POST /api/predictions` accepts `amount`, optional `alternative_amount`, `years`
-(default 30), and `annual_return` (default 0.07). It compounds the difference
-between the original and alternative amounts. Add `times_per_month` for
-annualized recurring spend and a recurring projection. Gemini writes the short
-explanation when available; the calculation still returns a fallback sentence
-if Gemini is unavailable.
+`POST /api/predictions` needs no login. It accepts `amount`, optional
+`alternative_amount`, `years` (1-100, default 30), and `annual_return` (0-1,
+default 0.07). Without `times_per_month` it compounds the one-time difference
+between the original and alternative amounts once a year.
+
+Add `times_per_month` for a recurring purchase. `recurring.monthly_savings` is
+`(amount - alternative_amount) × times_per_month`, put aside at the end of every
+month and grown at the monthly rate equivalent to `annual_return`.
+`recurring.total_saved` is the money set aside before growth, and
+`recurring.future_savings` is its value after `years`. The Predict screen sends
+`times_per_month` and shows `recurring.future_savings`.
+
+`explanation` is one sentence. `explanation_source` is `gemini` when Gemini
+wrote it, or `fallback` when Gemini is unavailable, times out (10 s), is over
+quota, or replies without the projected amount. After a quota error the API
+uses the fallback for Gemini's suggested retry delay. Gemini sentences are
+cached per amount, so repeated inputs do not spend quota. Nothing is saved
+server-side; the Predict screen stores a chosen goal in the signed-in user's
+Supabase `user_metadata.predict_goal` (on the device for demo sessions).
 
 ```json
 {"amount":50,"alternative_amount":35,"years":30,"annual_return":0.07,"times_per_month":2}

@@ -87,6 +87,18 @@ def supabase_mock(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_gemini(monkeypatch):
+    """Gemini clients must be faked; never send the local API key or traffic."""
+    from backend.services import gemini_service
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Unmocked Gemini client")
+    monkeypatch.setattr(gemini_service.genai, "Client", unexpected)
+    gemini_service._explanations.clear()
+    monkeypatch.setattr(gemini_service, "_explanations_paused_until", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def no_real_nessie(monkeypatch):
     """Nessie calls must be mocked; never send the local sandbox key or traffic."""
     from backend.services import nessie_service

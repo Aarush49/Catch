@@ -1,4 +1,4 @@
-# $\color{yellow}{Cat}$ch
+<img src="docs/catch-wordmark.svg" alt="Catch" width="220">
 
 Expo app and FastAPI backend for receipt scanning, spending history, shopping
 comparisons, Nessie banking, and financial predictions.

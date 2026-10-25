@@ -47,7 +47,8 @@ def receipt_response(receipt, fallback_date=None):
         "subtotal": raw["subtotal"], "tax": raw["tax"], "total": raw["total"],
         "raw_json": raw, "created_at": now, "warnings": raw["warnings"],
         "items": [{"id": str(uuid4()), "receipt_id": receipt_id, **item,
-                   "purchased_at": purchased_at, "created_at": now} for item in raw["items"]],
+                   "purchased_at": purchased_at, "created_at": now, "carbon_kg_co2e": str(original.get("carbon_kg_co2e", "0"))}
+                  for item, original in zip(raw["items"], receipt["items"])],
     }
 
 
@@ -86,7 +87,8 @@ def supabase_mock(request, monkeypatch, user):
         if stub.failure is not None:
             raise stub.failure
         if name in stub.responses:
-            data = deepcopy(stub.responses[name])
+            response = stub.responses[name]
+            data = response(params) if callable(response) else deepcopy(response)
         elif name == "ripple_save_receipt":
             data = receipt_response(params["p_receipt"], params["p_fallback_date"])
         elif name in {"ripple_receipts", "ripple_items"}:
@@ -100,7 +102,7 @@ def supabase_mock(request, monkeypatch, user):
         elif name == "ripple_demo_ids":
             data = {"customer_id": params["p_customer_id"], "account_id": params["p_account_id"]} if params else None
         elif name == "ripple_check":
-            data = {"status": "ok", "schema_version": 1}
+            data = {"status": "ok", "schema_version": 2}
         else:
             raise AssertionError(f"Unexpected RPC: {name}")
         return httpx.Response(stub.status, text=json.dumps(data), headers={"content-type": "application/json"})

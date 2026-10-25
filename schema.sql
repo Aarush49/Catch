@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS public.receipt_items (
     category TEXT NOT NULL CHECK (category IN (
         'groceries', 'produce', 'dairy', 'meat_seafood', 'bakery', 'beverages',
         'snacks', 'household', 'personal_care', 'health', 'electronics',
-        'clothing', 'restaurant', 'entertainment', 'transportation', 'other'
+        'clothing', 'restaurant', 'entertainment', 'transportation', 'utilities', 'other'
     )),
     quantity NUMERIC NOT NULL CHECK (quantity > 0 AND quantity < 'Infinity'::numeric),
     unit_price NUMERIC CHECK (unit_price >= 0 AND unit_price < 'Infinity'::numeric),
@@ -39,6 +39,75 @@ CREATE TABLE IF NOT EXISTS public.receipt_items (
     position INTEGER NOT NULL CHECK (position >= 0),
     UNIQUE (receipt_id, position)
 );
+-- Additive upgrade from the original receipt-only Supabase schema.
+-- Legacy username-only users remain valid; signed-in accounts also have email/hash fields.
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS email TEXT UNIQUE
+    CHECK (email = lower(btrim(email)) AND length(email) BETWEEN 3 AND 320 AND strpos(email, '@') > 1);
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS salt TEXT;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password_hash TEXT CHECK (
+    (email IS NULL AND salt IS NULL AND password_hash IS NULL)
+    OR (email IS NOT NULL AND salt IS NOT NULL AND password_hash IS NOT NULL AND salt ~ '^[0-9a-f]{32}$' AND password_hash ~ '^[0-9a-f]{64}$')
+);
+ALTER TABLE public.receipt_items ADD COLUMN IF NOT EXISTS carbon_kg_co2e NUMERIC NOT NULL DEFAULT 0
+    CHECK (carbon_kg_co2e >= 0 AND carbon_kg_co2e < 'Infinity'::numeric);
+-- Widen the known receipt category check without changing any existing data.
+ALTER TABLE public.receipt_items DROP CONSTRAINT IF EXISTS receipt_items_category_check;
+ALTER TABLE public.receipt_items ADD CONSTRAINT receipt_items_category_check CHECK (category IN (
+    'groceries', 'produce', 'dairy', 'meat_seafood', 'bakery', 'beverages', 'snacks',
+    'household', 'personal_care', 'health', 'electronics', 'clothing', 'restaurant',
+    'entertainment', 'transportation', 'utilities', 'other'
+));
+
+CREATE TABLE IF NOT EXISTS public.sessions (
+    token_hash TEXT PRIMARY KEY CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS public.linked_accounts (
+    user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL DEFAULT 'nessie',
+    customer_id TEXT NOT NULL CHECK (length(btrim(customer_id)) > 0),
+    account_id TEXT NOT NULL CHECK (length(btrim(account_id)) > 0),
+    linked_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS public.transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    source TEXT NOT NULL CHECK (length(btrim(source)) > 0),
+    external_id TEXT NOT NULL CHECK (length(btrim(external_id)) > 0),
+    transaction_type TEXT NOT NULL CHECK (length(btrim(transaction_type)) > 0),
+    amount NUMERIC NOT NULL CHECK (amount > '-Infinity'::numeric AND amount < 'Infinity'::numeric),
+    date DATE NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    raw_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    UNIQUE (user_id, source, external_id)
+);
+CREATE TABLE IF NOT EXISTS public.shopping_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 200),
+    price NUMERIC NOT NULL CHECK (price > 0 AND price < 'Infinity'::numeric),
+    brand TEXT,
+    category TEXT NOT NULL DEFAULT 'other' CHECK (category IN (
+        'groceries', 'produce', 'dairy', 'meat_seafood', 'bakery', 'beverages', 'snacks',
+        'household', 'personal_care', 'health', 'electronics', 'clothing', 'restaurant',
+        'entertainment', 'transportation', 'utilities', 'other'
+    )),
+    allow_lower_quality BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS sessions_user_expiry_idx ON public.sessions (user_id, expires_at);
+CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON public.transactions (user_id, date DESC);
+CREATE INDEX IF NOT EXISTS shopping_items_user_created_idx ON public.shopping_items (user_id, created_at);
+ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.linked_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shopping_items ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.sessions, public.linked_accounts, public.transactions, public.shopping_items FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.sessions, public.linked_accounts, public.transactions, public.shopping_items TO service_role;
+GRANT DELETE ON public.sessions, public.shopping_items TO service_role;
+
 CREATE INDEX IF NOT EXISTS receipts_user_history_idx
     ON public.receipts (user_id, purchase_date DESC NULLS LAST, created_at DESC);
 CREATE INDEX IF NOT EXISTS receipt_items_purchase_date_idx ON public.receipt_items (purchased_at DESC);
@@ -67,7 +136,7 @@ RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' SET time
         'id', i.id, 'receipt_id', i.receipt_id, 'raw_name', i.raw_name,
         'full_name', i.expanded_name, 'category', i.category,
         'quantity', i.quantity::text, 'unit_price', i.unit_price::text,
-        'total_price', i.total_price::text, 'purchased_at', i.purchased_at,
+        'total_price', i.total_price::text, 'carbon_kg_co2e', i.carbon_kg_co2e::text, 'purchased_at', i.purchased_at,
         'created_at', i.created_at
     );
 $$;
@@ -134,12 +203,12 @@ BEGIN
     LOOP
         INSERT INTO public.receipt_items
             (id, receipt_id, raw_name, expanded_name, category, quantity,
-             unit_price, total_price, created_at, purchased_at, position)
+             unit_price, total_price, created_at, purchased_at, position, carbon_kg_co2e)
         VALUES
             (gen_random_uuid(), v_receipt.id, v_line->>'raw_name', v_line->>'full_name',
              v_line->>'category', (v_line->>'quantity')::numeric,
              (v_line->>'unit_price')::numeric, (v_line->>'total_price')::numeric,
-             v_now, v_purchased_at, v_position);
+             v_now, v_purchased_at, v_position, COALESCE((v_line->>'carbon_kg_co2e')::numeric, 0));
     END LOOP;
     RETURN ripple_private.receipt_json(v_receipt);
 END;
@@ -213,9 +282,138 @@ BEGIN
     PERFORM id FROM public.users LIMIT 1;
     PERFORM id FROM public.receipts LIMIT 1;
     PERFORM id FROM public.receipt_items LIMIT 1;
-    RETURN jsonb_build_object('status', 'ok', 'schema_version', 1);
+    PERFORM token_hash FROM public.sessions LIMIT 1;
+    PERFORM user_id FROM public.linked_accounts LIMIT 1;
+    PERFORM id FROM public.transactions LIMIT 1;
+    PERFORM id FROM public.shopping_items LIMIT 1;
+    RETURN jsonb_build_object('status', 'ok', 'schema_version', 2);
 END;
 $$;
+
+-- Auth remains compatible with main: PBKDF2 hashing happens only on the backend.
+-- No password or plaintext session token is sent to, or stored in, these RPCs.
+CREATE OR REPLACE FUNCTION public.ripple_create_account(p_email TEXT, p_salt TEXT, p_password_hash TEXT)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE v_id UUID := gen_random_uuid(); v_user public.users;
+BEGIN
+    INSERT INTO public.users (id, username, email, salt, password_hash)
+    VALUES (v_id, 'account:' || v_id::text, lower(btrim(p_email)), p_salt, p_password_hash)
+    RETURNING * INTO v_user;
+    RETURN jsonb_build_object('id', v_user.id, 'email', v_user.email);
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_auth_record(p_email TEXT)
+RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' AS $$
+    SELECT jsonb_build_object('id', id, 'email', email, 'salt', salt, 'password_hash', password_hash)
+    FROM public.users WHERE email = lower(btrim(p_email)) AND password_hash IS NOT NULL;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_create_session(p_user_id UUID, p_token_hash TEXT, p_expires_at TIMESTAMPTZ)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+    INSERT INTO public.sessions (token_hash, user_id, expires_at) VALUES (p_token_hash, p_user_id, p_expires_at);
+    RETURN jsonb_build_object('status', 'ok');
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_session_user(p_token_hash TEXT)
+RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' AS $$
+    SELECT jsonb_build_object('id', u.id, 'email', u.email)
+    FROM public.sessions s JOIN public.users u ON u.id = s.user_id
+    WHERE s.token_hash = p_token_hash AND s.expires_at > CURRENT_TIMESTAMP;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_delete_session(p_token_hash TEXT)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+    DELETE FROM public.sessions WHERE token_hash = p_token_hash;
+    RETURN jsonb_build_object('status', 'ok');
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_save_link(p_user_id UUID, p_customer_id TEXT, p_account_id TEXT)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+BEGIN
+    INSERT INTO public.linked_accounts (user_id, customer_id, account_id)
+    VALUES (p_user_id, p_customer_id, p_account_id)
+    ON CONFLICT (user_id) DO UPDATE SET provider = 'nessie', customer_id = EXCLUDED.customer_id,
+        account_id = EXCLUDED.account_id, linked_at = statement_timestamp();
+    RETURN jsonb_build_object('status', 'ok');
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_get_link(p_user_id UUID)
+RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' AS $$
+    SELECT jsonb_build_object('customer_id', customer_id, 'account_id', account_id)
+    FROM public.linked_accounts WHERE user_id = p_user_id;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_upsert_transactions(p_user_id UUID, p_rows JSONB)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE v_row JSONB; v_count INTEGER := 0;
+BEGIN
+    IF jsonb_typeof(p_rows) IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'Transactions must be an array';
+    END IF;
+    FOR v_row IN SELECT value FROM jsonb_array_elements(p_rows) LOOP
+        INSERT INTO public.transactions
+            (id, user_id, source, external_id, transaction_type, amount, date, description, category, raw_json)
+        VALUES (gen_random_uuid(), p_user_id, v_row->>'source', v_row->>'id', v_row->>'type',
+                (v_row->>'amount')::numeric, (v_row->>'date')::date,
+                v_row->>'description', v_row->>'category', COALESCE(v_row->'raw', '{}'::jsonb))
+        ON CONFLICT (user_id, source, external_id) DO UPDATE SET
+            transaction_type = EXCLUDED.transaction_type, amount = EXCLUDED.amount,
+            date = EXCLUDED.date, description = EXCLUDED.description, category = EXCLUDED.category,
+            raw_json = EXCLUDED.raw_json;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN jsonb_build_object('count', v_count);
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_transactions(p_user_id UUID)
+RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' AS $$
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'id', t.external_id, 'source', t.source, 'type', t.transaction_type,
+        'amount', t.amount::text, 'date', t.date, 'description', t.description, 'category', t.category
+    ) ORDER BY t.date DESC, t.id), '[]'::jsonb) FROM public.transactions t WHERE t.user_id = p_user_id;
+$$;
+CREATE OR REPLACE FUNCTION ripple_private.shopping_json(i public.shopping_items)
+RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' AS $$
+    SELECT jsonb_build_object('id', i.id, 'user_id', i.user_id, 'name', i.name,
+        'price', i.price::text, 'brand', i.brand, 'category', i.category, 'allow_lower_quality', i.allow_lower_quality);
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_add_shopping_item(p_user_id UUID, p_item JSONB)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE v_item public.shopping_items;
+BEGIN
+    INSERT INTO public.shopping_items (id, user_id, name, price, brand, category, allow_lower_quality)
+    VALUES (gen_random_uuid(), p_user_id, p_item->>'name', (p_item->>'price')::numeric,
+        p_item->>'brand', COALESCE(p_item->>'category', 'other'), COALESCE((p_item->>'allow_lower_quality')::boolean, FALSE))
+    RETURNING * INTO v_item;
+    RETURN ripple_private.shopping_json(v_item);
+END;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_shopping_items(p_user_id UUID)
+RETURNS JSONB LANGUAGE SQL STABLE SECURITY INVOKER SET search_path = '' AS $$
+    SELECT COALESCE(jsonb_agg(ripple_private.shopping_json(i) ORDER BY i.created_at, i.id), '[]'::jsonb)
+    FROM public.shopping_items i WHERE i.user_id = p_user_id;
+$$;
+CREATE OR REPLACE FUNCTION public.ripple_delete_shopping_item(p_user_id UUID, p_item_id UUID)
+RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER SET search_path = '' AS $$
+DECLARE v_count INTEGER;
+BEGIN
+    DELETE FROM public.shopping_items WHERE user_id = p_user_id AND id = p_item_id;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+    RETURN jsonb_build_object('deleted', v_count > 0);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION ripple_private.shopping_json(public.shopping_items) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION ripple_private.shopping_json(public.shopping_items) TO service_role;
+REVOKE ALL ON FUNCTION public.ripple_create_account(TEXT, TEXT, TEXT), public.ripple_auth_record(TEXT),
+    public.ripple_create_session(UUID, TEXT, TIMESTAMPTZ), public.ripple_session_user(TEXT), public.ripple_delete_session(TEXT),
+    public.ripple_save_link(UUID, TEXT, TEXT), public.ripple_get_link(UUID), public.ripple_upsert_transactions(UUID, JSONB),
+    public.ripple_transactions(UUID), public.ripple_add_shopping_item(UUID, JSONB), public.ripple_shopping_items(UUID),
+    public.ripple_delete_shopping_item(UUID, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ripple_create_account(TEXT, TEXT, TEXT), public.ripple_auth_record(TEXT),
+    public.ripple_create_session(UUID, TEXT, TIMESTAMPTZ), public.ripple_session_user(TEXT), public.ripple_delete_session(TEXT),
+    public.ripple_save_link(UUID, TEXT, TEXT), public.ripple_get_link(UUID), public.ripple_upsert_transactions(UUID, JSONB),
+    public.ripple_transactions(UUID), public.ripple_add_shopping_item(UUID, JSONB), public.ripple_shopping_items(UUID),
+    public.ripple_delete_shopping_item(UUID, UUID) TO service_role;
 
 -- Scope grants to Ripple's objects; do not change other applications' defaults.
 REVOKE ALL ON FUNCTION ripple_private.owner_id(UUID), ripple_private.item_json(public.receipt_items),

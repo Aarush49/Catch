@@ -25,7 +25,9 @@ class DatabaseConfigurationError(DatabaseError):
 
 
 class DatabaseConstraintError(DatabaseError):
-    pass
+    def __init__(self, message: str, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 def _configuration() -> tuple[str, str]:
@@ -76,7 +78,7 @@ def rpc(name: str, params: dict | None = None):
             data = client.rpc(name, params or {}).execute().data
     except APIError as exc:
         if str(exc.code) in {"23502", "23503", "23505", "23514", "22003", "22007", "22P02", "22023"}:
-            raise DatabaseConstraintError("Database constraints rejected the supplied data.") from None
+            raise DatabaseConstraintError("Database constraints rejected the supplied data.", str(exc.code)) from None
         if str(exc.code) in {"PGRST202", "PGRST204", "42P01", "42883", "3F000"}:
             raise DatabaseError("Supabase schema is not ready. Run schema.sql in the Supabase SQL Editor.") from None
         if str(exc.code) in {"42501", "PGRST301", "PGRST302", "PGRST303"}:
@@ -95,6 +97,6 @@ def rpc(name: str, params: dict | None = None):
 
 def check_connection() -> dict:
     result = rpc("ripple_check")
-    if not isinstance(result, dict) or result.get("status") != "ok" or result.get("schema_version") != 1:
+    if not isinstance(result, dict) or result.get("status") != "ok" or result.get("schema_version") != 2:
         raise DatabaseError("Supabase schema check failed. Run the current schema.sql in the SQL Editor.")
     return result

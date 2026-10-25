@@ -9,7 +9,7 @@ from scripts import init_db
 
 
 def test_real_sdk_uses_https_rpc_and_closes_transport(supabase_mock):
-    assert database.check_connection() == {"status": "ok", "schema_version": 1}
+    assert database.check_connection() == {"status": "ok", "schema_version": 2}
     assert supabase_mock.calls == [("ripple_check", {})]
     assert all(client.is_closed for client in supabase_mock.transports)
     assert supabase_mock.transports[0].timeout.read == 15

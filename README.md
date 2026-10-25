@@ -1,9 +1,22 @@
 # Ripple API
 
-FastAPI backend for receipt scanning, itemized spending, and a demo Capital One
-Nessie account. Gemini reads receipt images; Supabase stores users, receipts,
-items, and demo account IDs. All application database requests use the Supabase
-Python SDK over HTTPS, normally port 443. No direct PostgreSQL connection is used.
+FastAPI backend and Expo UI for receipt scanning, spending history, Nessie
+banking, shopping comparisons, and financial predictions. Supabase stores users,
+sessions, bank links, transactions, receipts, receipt items, and shopping items.
+All application database requests use the Supabase Python SDK over HTTPS, normally port 443. No direct PostgreSQL connection is used.
+
+## Frontend
+
+```bash
+cd frontend
+npm install
+npx expo start
+```
+
+Open the QR code in Expo Go or start an available simulator. The current Expo
+screens still use mock data and AsyncStorage (`frontend/src/store/AppStore.tsx`).
+They need API wiring before UI actions will create rows in Supabase. The backend
+integration below does not change that frontend behavior.
 
 ## Install and configure
 
@@ -40,9 +53,10 @@ See [Supabase API keys](https://supabase.com/docs/guides/getting-started/api-key
 | `SUPABASE_URL` | Required project HTTPS base URL. |
 | `SUPABASE_SECRET_KEY` | Required backend-only secret with service-role access. |
 | `GEMINI_API_KEY` | Required for real receipt parsing. |
-| `GEMINI_MODEL` | Optional; defaults to `gemini-2.5-flash`. |
-| `MOCK_MODE` | `true` uses sample receipt data instead of calling Gemini. Supabase is still required. |
+| `GEMINI_MODEL` | Optional shared model override; choose a model enabled for your key. |
+| `MOCK_MODE` | Sample parsing for the legacy `/receipts/scan` route only; `/api/receipts/scan` uses Gemini. Supabase is still required. |
 | `NESSIE_API_KEY` | Required only for Nessie routes. |
+| `SERPAPI_KEY` | Required for shopping comparisons and alternatives. |
 
 `DATABASE_URL` and Tiger Data credentials are no longer read by this integration.
 Keep `.env` out of Git. The Supabase secret must stay on the backend; never put it
@@ -71,22 +85,66 @@ is required; the verification command does not create tables or functions.
 A missing-function/schema error means you should run the current `schema.sql`
 and allow its PostgREST schema-cache refresh to finish.
 
-The script runs in a transaction and is idempotent: it creates missing tables
-and indexes and replaces Ripple's functions without deleting rows. It also
-reapplies RLS and the grants described below. It does not upgrade incompatible
-existing tables or transfer data from Tiger Data. Those would require separate,
+The script runs in a transaction and is idempotent: it creates missing tables,
+indexes, and functions without deleting rows. It upgrades the known receipt-only
+schema to version 2 by adding account credential columns, carbon estimates, four
+new tables, and their RPCs. It widens the receipt category constraint to accept
+`utilities`, and reapplies RLS/grants on all seven tables. Existing receipt/user
+IDs and rows are retained. It does not migrate records from a local SQLite file
+or Tiger Data, or repair arbitrary incompatible schemas. Those would require separate,
 reviewed migrations. No schema script is executed automatically by FastAPI.
 
 ## Run and use the API
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn backend.main:app --reload
 ```
 
 Interactive docs: `http://localhost:8000/docs`. Application health:
 `http://localhost:8000/health`; this route does not check Supabase connectivity.
-Existing route paths, query parameters, status behavior, and successful receipt
-response fields are retained.
+Both `backend.main:app` and `app.main:app` expose the same combined application.
+Main's authenticated `/api/*` routes and the earlier legacy routes retain their
+successful response formats. Database failures return sanitized HTTP 503 errors.
+No SQLite file is created during startup.
+
+For the authenticated API, sign up or log in at `POST /api/auth/signup` or
+`POST /api/auth/login` with JSON `{"email":"you@example.com","password":"your-password"}`.
+Use the returned `access_token` in `Authorization: Bearer YOUR_ACCESS_TOKEN`.
+Sessions last 30 days; `POST /api/auth/logout` revokes the current session.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/auth/me` | Signed-in user profile. |
+| `POST /api/receipts/scan` | Authenticated receipt scan; returns store/date/items/carbon estimates. |
+| `GET /api/receipts`, `GET /api/receipts/{id}` | The signed-in user's receipt history/details. |
+| `GET/POST /api/shopping-list/items`, `DELETE /api/shopping-list/items/{id}` | Per-user shopping list. |
+| `POST /api/shopping-list/done` | Compare the current shopping list with SerpAPI. |
+| `GET /api/nessie/customers`, `GET /api/nessie/customers/{id}/accounts` | Nessie sandbox lookup. |
+| `POST /api/nessie/link`, `GET /api/nessie/transactions` | Link a bank account and upsert imported transactions for this user. |
+| `GET /api/spending/history` | Main's bank expense/income history; does not double-count receipt lines. |
+| `GET /api/shopping/alternatives` | Existing product alternatives search. |
+| `POST /api/predictions` | Existing long-term projections. |
+
+See [the API reference](docs/API.md) for the imported shopping, carbon, bank, and prediction details.
+
+Example authenticated scan:
+
+```bash
+curl -X POST http://localhost:8000/api/receipts/scan \
+  -H 'Authorization: Bearer YOUR_ACCESS_TOKEN' \
+  -F 'file=@receipt.jpg;type=image/jpeg'
+```
+
+For a controlled demo, optionally run `python -m scripts.seed_supabase_demo`.
+This writes an account and four repeatable sample transactions to Supabase.
+The default demo login is `demo@ripple.local` / `RippleDemo123!`; override it with
+`RIPPLE_DEMO_EMAIL` and `RIPPLE_DEMO_PASSWORD` for a private demo. Re-running
+updates the same external transaction IDs. The legacy command
+`python scripts/seed_sqlite_demo.py` delegates to this Supabase seed and no longer
+opens SQLite.
+
+The earlier receipt-only endpoints below remain available for compatibility.
+They use a shared demo user rather than the signed-in user's identity.
 
 Upload a JPEG, PNG, HEIC, or HEIF receipt up to 15 MB:
 
@@ -122,7 +180,11 @@ item quantities or negative prices return 422.
 
 | Table | Contents |
 | --- | --- |
-| `public.users` | UUID, unique username, creation time, optional Nessie demo IDs. Separate from Supabase `auth.users`. |
+| `public.users` | UUID, legacy username, optional unique email and salted PBKDF2 password hash, creation time and legacy demo IDs. Separate from `auth.users`. |
+| `public.sessions` | SHA-256 session token hashes, user reference and expiry; plaintext tokens are never stored. |
+| `public.linked_accounts` | One Nessie customer/account link per user. |
+| `public.transactions` | Per-user bank/demo transactions; exact amounts and unique `(user_id, source, external_id)` import keys. |
+| `public.shopping_items` | Per-user products, prices, brands, categories and quality preference. |
 | `public.receipts` | Owning user, merchant/date/totals, raw parsed JSON and creation time. |
 | `public.receipt_items` | Owning receipt, raw/expanded name, category, quantity/prices, timestamps and line order. |
 
@@ -134,10 +196,16 @@ Money and quantities use PostgreSQL `NUMERIC` without fixed-scale rounding.
 Refunds/negative item prices are not supported by this MVP.
 
 `app/storage.py` keeps its public functions, including optional `user_id`
-arguments. Existing endpoints have no user identity and use the shared
+arguments. Legacy receipt-only endpoints have no user identity and use the shared
 `ripple-demo` user. User helpers do not provide authentication. The SQL fields
 `merchant`/`expanded_name` map to the existing `store_name`/`full_name` response
 fields. Raw JSON, warnings, UUIDs, dates, timestamps, and item order are retained.
+The new `backend/services/supabase_store.py` adapts the SQLite-era function
+contracts to these same tables/RPCs. Main's `name`/`price` item fields map to
+`expanded_name`/`total_price`; carbon estimates are stored in `carbon_kg_co2e`.
+Line ownership is derived from the parent receipt rather than duplicating its
+user ID. Old lines without an estimate initialize to zero; new scans persist the
+estimated value. The previous `sqlite_store` module is only an import shim.
 
 Every save calls **one** `ripple_save_receipt` RPC. This PostgreSQL function
 creates the demo user if needed, inserts the receipt and every item, and returns
@@ -159,18 +227,21 @@ uploads currently have no idempotency key.
 
 ## Access controls
 
-All three tables have RLS enabled. The schema grants no table access to `PUBLIC`,
+All seven tables have RLS enabled. The schema grants no table access to `PUBLIC`,
 `anon`, or `authenticated`, and creates no permissive client policies. It also
 revokes execution on every Ripple RPC from those roles. Only `service_role`
-receives table SELECT/INSERT/UPDATE and function EXECUTE privileges. All RPCs use
+receives table SELECT/INSERT/UPDATE and function EXECUTE privileges, plus DELETE
+on sessions and shopping items for logout and list removal. All RPCs use
 `SECURITY INVOKER`, an empty search path, and schema-qualified references.
 Supabase secret keys run with service-role privileges and bypass RLS, which is
 why the key stays exclusively on the backend.
 
-The existing FastAPI demo endpoints still have no authentication and permit
-CORS from all origins. These Supabase restrictions protect direct Data API
-access; they do not authenticate callers of FastAPI. Add API authentication and
-trusted user ownership before making this shared demo API publicly available.
+Main's private `/api/*` routes use the existing backend login/session flow and
+scope database operations to the verified session's user. Authentication remains
+custom PBKDF2 plus opaque session tokens for compatibility; it does not use
+Supabase Auth. Keep the shared legacy demo endpoints and public demo seed out of
+a production deployment. CORS remains enabled for the demo; configure trusted
+origins and production authentication controls before a public launch.
 
 ## Tests
 
@@ -187,7 +258,8 @@ validation, missing/incorrect credentials, failed requests, timeout behavior,
 transport cleanup, error redaction, and health/Nessie endpoint compatibility.
 
 For actual SQL transaction, constraint, precision, and RLS/grant regression
-checks, review and run `tests/sql/test_storage.sql` in the SQL Editor after
+checks, review and run `tests/sql/test_storage.sql` and
+`tests/sql/test_authenticated_storage.sql` in the SQL Editor after
 installing the schema. All its test writes are enclosed in a transaction that
 ends with `ROLLBACK`. If it fails, roll back the open transaction before
 continuing. It does not delete existing data or alter tables.
@@ -205,3 +277,10 @@ python -m pytest tests/integration --run-db-integration -q
 On PowerShell use `$env:VARIABLE='value'` instead of `export`. Live tests verify
 schema access and reads; they never insert/delete cloud records. The SQL Editor
 checks verify transaction rollback and role grants inside PostgreSQL itself.
+
+The default pytest command includes both `tests/` and `backend/tests/`, including
+the imported SerpAPI tests. Merge integration tests cover signup/login/logout,
+hashed credentials/tokens, per-user receipt/transaction/shopping calls, carbon
+persistence, banking imports, and both API entry points. SQL tests cover fresh
+installation and the receipt-only schema upgrade, atomic batch/receipt rollback,
+transaction deduplication, session expiry/revocation, ownership, and role grants.

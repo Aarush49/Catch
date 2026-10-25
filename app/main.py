@@ -6,6 +6,7 @@ from uuid import UUID
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app import storage
 from app.database import DatabaseError
@@ -26,6 +27,11 @@ app.add_middleware(
 
 ALLOWED_MIME = {"image/jpeg", "image/png", "image/heic", "image/heif"}
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+
+@app.exception_handler(DatabaseError)
+async def database_error_handler(_request, exc: DatabaseError):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.get("/health")
@@ -192,3 +198,12 @@ def seed_nessie() -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Nessie seeding failed: {exc}") from exc
+
+
+# Preserve the legacy routes above and expose main's authenticated API on the
+# same application, regardless of which documented entry point is used.
+from backend.routers import auth, nessie, predictions, receipts, shopping, shopping_list, spending
+
+for api_router in (auth.router, nessie.router, predictions.router, receipts.router,
+                   shopping.router, shopping_list.router, spending.router):
+    app.include_router(api_router)

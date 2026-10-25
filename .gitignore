@@ -1,12 +1,15 @@
 # Node
 node_modules/
 dist/
+.expo/
 
-# Python
+# Python and local database artifacts
 __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+data/*.sqlite3
+data/*.db
 
 # Environment
 .env

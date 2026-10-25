@@ -1,9 +1,3 @@
-from fastapi import FastAPI
+"""Canonical API entry point; legacy routes and /api routes share Supabase."""
 
-
-app = FastAPI(title="Ripple API")
-
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+from app.main import app

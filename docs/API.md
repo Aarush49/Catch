@@ -136,14 +136,14 @@ returns `{account_id, count, transactions, created}`. Calling it again does not
 create a second bank: it re-imports the linked account (`created: false`).
 Nessie stores whole-dollar amounts for purchases, deposits and transfers.
 
-The demo bank also gets six monthly bills and a `CATch savings` account. Each
+The demo bank also gets six monthly bills and a `Catch savings` account. Each
 import stores, in the same `transactions` table:
 
 - purchases with their merchant's spending category (`groceries`, `restaurant`,
   `household`, `health`, `transportation`, `other`);
 - upcoming bills as `transaction_type = 'bill'`, dated on their next payment
   date (bills deleted in Nessie are removed);
-- deposits into `CATch savings` as `transaction_type = 'savings'`.
+- deposits into `Catch savings` as `transaction_type = 'savings'`.
 
 Spending totals count only purchases and withdrawals, and income only paychecks,
 so bills, savings and transfers are never counted as spending or income. Calling
@@ -158,7 +158,7 @@ curl -X POST http://localhost:8000/api/nessie/savings \
 ```
 
 The amount is rounded to the nearest dollar (under $0.50 moves nothing). It is
-deposited into `CATch savings` (created on first use) and recorded as a transfer
+deposited into `Catch savings` (created on first use) and recorded as a transfer
 out of checking. The response is `{moved, savings_total}`.
 
 To link an existing sandbox account instead, use `GET /api/nessie/customers`, then

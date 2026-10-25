@@ -36,7 +36,7 @@ export async function predictSavings(request: PredictionRequest, signal?: AbortS
     response = await fetch(`${apiUrl}/api/predictions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request), signal });
   } catch (error) {
     if (signal?.aborted) throw error;
-    throw new Error('Could not reach the CATch server. Check that the backend is running and EXPO_PUBLIC_API_URL is correct.');
+    throw new Error('Could not reach the Catch server. Check that the backend is running and EXPO_PUBLIC_API_URL is correct.');
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The projection failed. Please try again.');

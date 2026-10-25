@@ -186,7 +186,7 @@ def test_demo_bank_creates_seeds_links_and_imports(api, monkeypatch, supabase_mo
     created_names = [call.args[0] for call in bank.mocks["create_merchant"].call_args_list]
     assert "H-E-B" not in created_names and len(created_names) == len(nessie.DEMO_MERCHANTS) - 1
     assert [call.args for call in bank.mocks["create_account"].call_args_list] == [
-        ("demo-customer", "CATch demo checking", 2500), ("demo-customer", "CATch savings", 0, "Savings")]
+        ("demo-customer", "Catch demo checking", 2500), ("demo-customer", "Catch savings", 0, "Savings")]
     purchases = bank.mocks["create_purchase"].call_args_list
     assert len(purchases) == 15
     assert all(call.args[0] == "demo-account" for call in purchases)
@@ -234,7 +234,7 @@ def test_demo_bank_twice_refreshes_instead_of_creating_a_second_bank(api, monkey
 
 def test_refresh_adds_bills_to_an_older_demo_bank_only(api, monkeypatch, supabase_mock):
     supabase_mock.responses[("GET", "linked_accounts")] = [{"customer_id": "demo-customer", "account_id": "demo-account"}]
-    bank = FakeBank(monkeypatch, existing_nickname="CATch demo checking")
+    bank = FakeBank(monkeypatch, existing_nickname="Catch demo checking")
     assert api.post("/api/nessie/demo-bank").status_code == 200
     assert bank.mocks["create_bill"].call_count == len(nessie.DEMO_BILLS)
     assert api.post("/api/nessie/demo-bank").status_code == 200
@@ -247,7 +247,7 @@ def test_refresh_adds_bills_to_an_older_demo_bank_only(api, monkeypatch, supabas
 
 def test_savings_move_rounds_to_dollars_and_records_both_sides(api, monkeypatch, supabase_mock, user_id):
     supabase_mock.responses[("GET", "linked_accounts")] = [{"customer_id": "demo-customer", "account_id": "demo-account"}]
-    bank = FakeBank(monkeypatch, existing_nickname="CATch demo checking")
+    bank = FakeBank(monkeypatch, existing_nickname="Catch demo checking")
     supabase_mock.responses[("GET", "transactions")] = [
         {"external_id": "s1", "transaction_type": "savings", "date": date.today().isoformat(), "amount": 7,
          "description": "To savings", "category": "savings", "source": "nessie"},
@@ -260,7 +260,7 @@ def test_savings_move_rounds_to_dollars_and_records_both_sides(api, monkeypatch,
     assert response.status_code == 200, response.text
     assert response.json()["moved"] == 7 and Decimal(str(response.json()["savings_total"])) == Decimal("10")
     # The savings account is created on first use, then receives the deposit; checking records the transfer.
-    bank.mocks["create_account"].assert_called_once_with("demo-customer", "CATch savings", 0, "Savings")
+    bank.mocks["create_account"].assert_called_once_with("demo-customer", "Catch savings", 0, "Savings")
     deposit = bank.mocks["create_deposit"].call_args
     assert deposit.args[:2] == ("demo-savings", 7) and deposit.args[3] == "To savings: Tide Pods → Tide Free & Gentle"
     assert bank.mocks["create_transfer"].call_args.args[:2] == ("demo-account", 7)
@@ -273,7 +273,7 @@ def test_savings_move_rounds_to_dollars_and_records_both_sides(api, monkeypatch,
 
 def test_savings_under_half_a_dollar_moves_nothing(api, monkeypatch, supabase_mock):
     supabase_mock.responses[("GET", "linked_accounts")] = [{"customer_id": "demo-customer", "account_id": "demo-account"}]
-    bank = FakeBank(monkeypatch, existing_nickname="CATch demo checking")
+    bank = FakeBank(monkeypatch, existing_nickname="Catch demo checking")
     response = api.post("/api/nessie/savings", json={"amount": 0.49})
     assert response.status_code == 200 and response.json()["moved"] == 0
     for name in ["create_account", "create_deposit", "create_transfer"]:
@@ -293,7 +293,7 @@ def test_savings_needs_a_linked_bank_and_a_valid_amount(api, monkeypatch, supaba
 
 def test_savings_still_succeeds_when_the_checking_transfer_fails(api, monkeypatch, supabase_mock):
     supabase_mock.responses[("GET", "linked_accounts")] = [{"customer_id": "demo-customer", "account_id": "demo-account"}]
-    bank = FakeBank(monkeypatch, existing_nickname="CATch demo checking",
+    bank = FakeBank(monkeypatch, existing_nickname="Catch demo checking",
                     transfer_error=nessie.NessieServiceError("Bank sandbox request failed.", 502))
     response = api.post("/api/nessie/savings", json={"amount": 4})
     assert response.status_code == 200 and response.json()["moved"] == 4
@@ -334,7 +334,7 @@ def test_nessie_client_request_shapes_and_missing_transfers(monkeypatch):
         "amount": 12, "status": "completed", "description": "H-E-B"})
     nessie_service.create_deposit("acct", 1850, date(2026, 10, 11), "Payroll paycheck")
     assert sent[-1][2]["status"] == "completed" and sent[-1][2]["transaction_date"] == "2026-10-11"
-    assert nessie_service.create_customer("CATch", "Demo")["address"]["state"] == "TX"
+    assert nessie_service.create_customer("Catch", "Demo")["address"]["state"] == "TX"
     assert nessie_service.create_merchant("H-E-B", "Groceries")["category"] == "Groceries"
     assert nessie_service.transfers("acct") == []
     # Only transfers treat 404 as empty; a missing account elsewhere is still an error.
@@ -348,7 +348,7 @@ def test_nessie_client_request_shapes_and_missing_transfers(monkeypatch):
     nessie_service.create_transfer("acct", 7, date(2026, 10, 25), "To savings: swap")
     assert sent[-1] == ("POST", "https://api.nessieisreal.com/accounts/acct/transfers", {
         "transaction_date": "2026-10-25", "status": "completed", "amount": 7, "description": "To savings: swap"})
-    nessie_service.create_account("cust", "CATch savings", 0, "Savings")
+    nessie_service.create_account("cust", "Catch savings", 0, "Savings")
     assert sent[-1][2]["type"] == "Savings"
 
 

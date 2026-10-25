@@ -87,7 +87,7 @@ export async function compareShoppingList(): Promise<ShoppingComparison> {
   try {
     response = await fetch(`${apiUrl}/api/shopping-list/done`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
   } catch {
-    throw new Error('Could not reach the CATch server. Check that the backend is running and EXPO_PUBLIC_API_URL is correct.');
+    throw new Error('Could not reach the Catch server. Check that the backend is running and EXPO_PUBLIC_API_URL is correct.');
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'Price comparison failed. Please try again.');

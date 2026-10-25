@@ -1,13 +1,13 @@
 import { accessToken, isDemoSession } from './auth';
 import { demoMode, getSupabase } from './supabase';
 
-/** type is purchase, withdrawal, deposit, income (paychecks), transfer, savings (moved into CATch savings) or bill (upcoming). */
+/** type is purchase, withdrawal, deposit, income (paychecks), transfer, savings (moved into Catch savings) or bill (upcoming). */
 export type BankTransaction = { id: string; type: string; amount: number; date: string; description: string; category: string };
 export type BankLink = { accountId: string; linkedAt: string };
 export type BankImport = { count: number; created?: boolean };
 export type SavingsMove = { moved: number; savingsTotal: number };
 
-/** Money that left the account. Transfers are excluded: the ones CATch makes are moves into savings. */
+/** Money that left the account. Transfers are excluded: the ones Catch makes are moves into savings. */
 export const isBankSpending = (txn: BankTransaction) => txn.type === 'purchase' || txn.type === 'withdrawal';
 /** Money that came in: paychecks (imported as "income") and other deposits. */
 export const isBankIncome = (txn: BankTransaction) => txn.type === 'income' || txn.type === 'deposit';
@@ -50,7 +50,7 @@ async function callBank(path: string, method: 'GET' | 'POST', body?: object): Pr
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
-    throw new Error('Could not reach the CATch server. Check that the backend is running and EXPO_PUBLIC_API_URL is correct.');
+    throw new Error('Could not reach the Catch server. Check that the backend is running and EXPO_PUBLIC_API_URL is correct.');
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof payload.detail === 'string' ? payload.detail : 'The bank request failed. Please try again.');
@@ -66,7 +66,7 @@ const toImport = (payload: any): BankImport => ({ count: Number(payload.count) |
 export const connectDemoBank = async () => toImport(await callBank('/api/nessie/demo-bank', 'POST'));
 export const refreshBank = connectDemoBank;
 
-/** Moves money from checking into CATch savings. The bank sandbox keeps whole dollars, so it rounds to the nearest dollar. */
+/** Moves money from checking into Catch savings. The bank sandbox keeps whole dollars, so it rounds to the nearest dollar. */
 export async function moveToSavings(amount: number, description: string): Promise<SavingsMove> {
   const payload = await callBank('/api/nessie/savings', 'POST', { amount: +amount.toFixed(2), description: description.slice(0, 200) });
   return { moved: Number(payload.moved) || 0, savingsTotal: Number(payload.savings_total) || 0 };

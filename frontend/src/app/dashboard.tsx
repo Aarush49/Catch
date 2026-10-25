@@ -34,7 +34,7 @@ export default function Dashboard() {
     category,
     total: bank.filter((txn) => isBankSpending(txn) && categoryFromDb(txn.category) === category).reduce((sum, txn) => sum + txn.amount, 0),
   })).filter((item) => item.total > 0).sort((a, b) => b.total - a.total), [bank]);
-  // CATch's own transfers out of checking mirror the savings deposits, so only the savings side is listed.
+  // Catch's own transfers out of checking mirror the savings deposits, so only the savings side is listed.
   const recent = bank.filter((txn) => txn.type !== 'transfer').slice(0, 5);
 
   if (!receipts.length && !bank.length) return <Screen>
@@ -63,7 +63,7 @@ export default function Dashboard() {
     {receipts.length > 0 && data.filter((item) => item.total > 0).map((item, index) => <View key={item.category} style={[styles.row, styles.divider, { minHeight: 52, gap: 10 }]}><CategoryIcon category={item.category} /><View style={{ flex: 1 }}><View style={[styles.row, { justifyContent: 'space-between', marginBottom: 5 }]}><Text style={{ fontSize: 12, fontWeight: '700', color: C.ink }}>{item.category}</Text><Text style={styles.tiny}>{Math.round(item.total / grand * 100)}%</Text></View><View style={{ height: 3, backgroundColor: '#DDD7CC', borderRadius: 4 }}><View style={{ height: 3, borderRadius: 4, width: `${item.total / grand * 100}%`, backgroundColor: barColors[index] }} /></View></View><Money value={item.total} size={12} /></View>)}
     {receipts.length > 0 && <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
       <View style={{ flex: 1, backgroundColor: '#E2E6E3', borderRadius: 17, padding: 13 }}><Eyebrow>CARBON TOTAL</Eyebrow><Text style={{ fontFamily: 'Georgia', fontSize: 28, color: C.navy }}>{carbon.toFixed(1)}<Text style={{ fontSize: 14 }}> kg</Text></Text><Text style={styles.tiny}>CO₂ equivalent</Text></View>
-      <View style={{ flex: 1, backgroundColor: '#D8EAD8', borderRadius: 17, padding: 13 }}><Eyebrow>SAVINGS FOUND</Eyebrow><Text style={{ fontFamily: 'Georgia', fontSize: 28, color: '#157536' }}>{money(saved)}</Text><Text style={styles.tiny}>{saved > 0 ? 'Moved to CATch savings' : 'No accepted swaps yet'}</Text></View>
+      <View style={{ flex: 1, backgroundColor: '#D8EAD8', borderRadius: 17, padding: 13 }}><Eyebrow>SAVINGS FOUND</Eyebrow><Text style={{ fontFamily: 'Georgia', fontSize: 28, color: '#157536' }}>{money(saved)}</Text><Text style={styles.tiny}>{saved > 0 ? 'Moved to Catch savings' : 'No accepted swaps yet'}</Text></View>
     </View>}
     {!receipts.length && <Pressable onPress={() => router.push('/scan')} style={[styles.panel, styles.row, { gap: 8 }]}><Text style={{ flex: 1, fontSize: 12, color: C.ink }}>Scan a receipt to see categories and carbon for what you buy.</Text><ArrowRight size={15} color={C.navy} /></Pressable>}
 

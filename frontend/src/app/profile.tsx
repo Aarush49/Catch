@@ -54,7 +54,7 @@ export default function Profile() {
       <View style={{ width: 88, height: 88, borderRadius: 30, backgroundColor: '#DCE4E8', alignItems: 'center', justifyContent: 'center', marginBottom: 13 }}>
         <UserRound size={38} color={C.navy} />
       </View>
-      <Text style={{ fontFamily: 'Georgia', fontSize: 25, color: C.navy }}>{user?.name || 'Your CATch profile'}</Text>
+      <Text style={{ fontFamily: 'Georgia', fontSize: 25, color: C.navy }}>{user?.name || 'Your Catch profile'}</Text>
       <Text style={[styles.body, { marginTop: 5 }]}>@{username}</Text>
       <Text style={[styles.body, { marginTop: 5 }]}>{user?.email || 'No email on file'}</Text>
     </View>
@@ -67,10 +67,10 @@ export default function Profile() {
       {!canBank ? <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}>Sign in with an account to connect a bank. Demo mode keeps everything on this device.</Text>
         : link === undefined ? <ActivityIndicator color={C.navy} />
         : link ? <>
-          <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}>CATch demo checking is connected (since {dateLabel(link.linkedAt.slice(0, 10))}). Its purchases, paychecks and savings show on your Dashboard, and its bills feed Predict.</Text>
+          <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}><Text style={{ color: C.amber, fontWeight: '700' }}>Cat</Text>ch demo checking is connected (since {dateLabel(link.linkedAt.slice(0, 10))}). Its purchases, paychecks and savings show on your Dashboard, and its bills feed Predict.</Text>
           <Action onPress={() => runBank('refresh')} kind="secondary">{busy === 'refresh' ? 'Refreshing…' : 'Refresh bank activity'}</Action>
         </> : <>
-          <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}>Try CATch with a sandbox checking account (Capital One Nessie) that comes with a month of sample purchases, a paycheck and monthly bills, plus a savings account for your swap savings. No real bank details needed.</Text>
+          <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}>Try <Text style={{ color: C.amber, fontWeight: '700' }}>Cat</Text>ch with a sandbox checking account (Capital One Nessie) that comes with a month of sample purchases, a paycheck and monthly bills, plus a savings account for your swap savings. No real bank details needed.</Text>
           <Action onPress={() => runBank('connect')}>{busy === 'connect' ? 'Connecting… (up to 20 seconds)' : 'Connect demo bank'}</Action>
         </>}
       {!!bankNote && <Text style={[styles.tiny, { color: '#157536' }]}>{bankNote}</Text>}
@@ -78,7 +78,7 @@ export default function Profile() {
     </View>
     <View style={[styles.panel, { marginBottom: 20 }]}>
       <Eyebrow>YOUR PRIVACY</Eyebrow>
-      <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}>Your receipts, list and bank activity are saved to your CATch account, visible only to you. You can log out whenever you like.</Text>
+      <Text style={{ fontSize: 12, lineHeight: 18, color: C.ink }}>Your receipts, list and bank activity are saved to your <Text style={{ color: C.amber, fontWeight: '700' }}>Cat</Text>ch account, visible only to you. You can log out whenever you like.</Text>
     </View>
     <Action onPress={logout} kind="danger"><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><LogOut size={16} color={C.tomato} /><Text style={{ color: C.tomato, fontSize: 13, fontWeight: '700' }}>Log out</Text></View></Action>
   </Screen>;

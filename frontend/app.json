@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CATch",
+    "name": "Catch",
     "slug": "catch-finance",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow CATch to use your camera to scan receipts.",
+          "cameraPermission": "Allow Catch to use your camera to scan receipts.",
           "recordAudioAndroid": false
         }
       ],

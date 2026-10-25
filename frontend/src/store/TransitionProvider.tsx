@@ -91,7 +91,7 @@ export function TransitionProvider({ children }: { children: React.ReactNode }) 
     <View style={{ flex: 1 }}>{children}</View>
     {overlay?.kind === 'splash' && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#003A70', transform: [{ translateY: splashY }], alignItems: 'center', justifyContent: 'center' }}>
       <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ width: 130, height: 130, marginBottom: 16 }} />
-      <Text style={{ fontSize: 27, color: '#FBBF24', fontWeight: '700' }}>CATch</Text>
+      <Text style={{ fontSize: 27, color: '#FFFFFF', fontWeight: '700' }}><Text style={{ color: '#FBBF24' }}>Cat</Text>ch</Text>
     </Animated.View>}
     {overlay?.kind === 'morph' && <Animated.View pointerEvents="none" style={{ position: 'absolute', left: morphLeft, top: morphTop, width: morphWidth, height: morphHeight, opacity: morphOpacity, backgroundColor: '#EAE4D9', borderRadius: 18 }} />}
     {overlay && overlay.kind !== 'splash' && <Animated.View pointerEvents="none" style={{ position: 'absolute', top: overlay.kind === 'calendar' ? (height - size) / 2 : overlay.phase === 'in' ? -size / 2 : height - size / 2, left: overlay.kind === 'calendar' ? (width - size) / 2 : overlay.phase === 'in' ? undefined : -size / 2, right: overlay.kind === 'calendar' ? undefined : overlay.phase === 'in' ? -size / 2 : undefined, width: size, height: size, borderRadius: size / 2, backgroundColor: overlay.kind === 'calendar' ? '#F5CE58' : '#EAE4D9', transform: [{ scale }] }} />}

@@ -79,12 +79,12 @@ export default function Compare() {
   const moveSwapSavings = async (done: { name: string; to: string; savings: number }[]) => {
     const amount = done.reduce((sum, swap) => sum + swap.savings, 0);
     const label = done.length === 1 ? `${done[0].name} → ${done[0].to}` : `${done.length} shopping list swaps`;
-    setSavingsNote('Moving your savings into CATch savings…');
+    setSavingsNote('Moving your savings into Catch savings…');
     try {
       const { moved, savingsTotal } = await moveToSavings(amount, label);
       const rounded = Math.abs(moved - amount) > 0.001 ? ' (the bank sandbox moves whole dollars)' : '';
       setSavingsNote(moved > 0
-        ? `Moved ${money(moved)} into CATch savings${rounded}. Savings balance: ${money(savingsTotal)}.`
+        ? `Moved ${money(moved)} into Catch savings${rounded}. Savings balance: ${money(savingsTotal)}.`
         : `${money(amount)} is under 50¢, so it stays in checking (the bank sandbox moves whole dollars).`);
     } catch (err) {
       setSavingsNote(err instanceof Error ? err.message : 'Could not move your savings. Please try again.');

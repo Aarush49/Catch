@@ -34,8 +34,8 @@ from backend.services.nessie_service import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/nessie", tags=["banking"])
 
-DEMO_CHECKING = "CATch demo checking"
-SAVINGS_ACCOUNT = "CATch savings"
+DEMO_CHECKING = "Catch demo checking"
+SAVINGS_ACCOUNT = "Catch savings"
 DEMO_MERCHANTS = {
     "H-E-B": "Groceries", "Trader Joe's": "Groceries", "Target": "Household", "Shell": "Gas",
     "Chipotle": "Dining", "Starbucks": "Dining", "Walgreens": "Health",
@@ -113,7 +113,7 @@ def _add_demo_bills(account_id: str) -> None:
 
 def _create_demo_bank() -> tuple[str, str]:
     merchant_ids = _demo_merchant_ids()
-    customer_id = str(create_customer("CATch", "Demo")["_id"])
+    customer_id = str(create_customer("Catch", "Demo")["_id"])
     account_id = str(create_account(customer_id, DEMO_CHECKING, 2500)["_id"])
     create_account(customer_id, SAVINGS_ACCOUNT, 0, "Savings")
     today = date.today()
@@ -179,7 +179,7 @@ def get_transactions(user=Depends(current_user)) -> dict[str, Any]:
 
 @router.post("/savings")
 def move_to_savings(request: SavingsMoveRequest, user=Depends(current_user)) -> dict[str, Any]:
-    """Move money from the linked checking account into the user's CATch savings account (created on first use)."""
+    """Move money from the linked checking account into the user's Catch savings account (created on first use)."""
     linked = supabase_store.get_link(user["id"])
     if not linked:
         raise HTTPException(status_code=409, detail="Connect a demo bank in your profile to move savings.")

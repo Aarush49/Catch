@@ -6,7 +6,7 @@ import { C } from '../components/tally';
 import { useAuth } from '../store/AuthProvider';
 
 const steps = [
-  { icon: Camera, title: 'Catch every purchase.', copy: 'Scan a receipt and CATch turns each item into a clear spending record.' },
+  { icon: Camera, title: 'Catch every purchase.', copy: 'Scan a receipt and Catch turns each item into a clear spending record.' },
   { icon: Leaf, title: 'See all three costs.', copy: 'Compare what you paid, its future value, and its estimated carbon impact.' },
   { icon: TrendingUp, title: 'Make the next choice count.', copy: 'Explore swaps, predictions, lists, and groups as your history grows.' },
 ];
@@ -28,6 +28,6 @@ export default function Onboarding() {
     {step === 0 && <Text style={{ fontFamily: 'Georgia', fontSize: 25, color: C.tomato, fontStyle: 'italic', textAlign: 'center', marginTop: 4 }}>{current.title}</Text>}
     <Text style={{ fontSize: 13, lineHeight: 20, color: C.muted, textAlign: 'center', marginTop: 14, maxWidth: 310 }}>{current.copy}</Text>
     <View style={{ flexDirection: 'row', gap: 7, marginVertical: 26 }}>{steps.map((_, index) => <View key={index} style={{ width: index === step ? 24 : 7, height: 7, borderRadius: 7, backgroundColor: index === step ? C.navy : '#C5C1B8' }} />)}</View>
-    <Pressable onPress={() => step === steps.length - 1 ? finish() : setStep(step + 1)} style={({ pressed }) => ({ width: '100%', minHeight: 54, borderRadius: 16, backgroundColor: C.navy, borderBottomWidth: pressed ? 1 : 5, borderBottomColor: '#002B53', transform: [{ translateY: pressed ? 4 : 0 }], alignItems: 'center', justifyContent: 'center' })}><Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>{step === steps.length - 1 ? 'Start using CATch' : 'Show me more'}</Text></Pressable>
+    <Pressable onPress={() => step === steps.length - 1 ? finish() : setStep(step + 1)} style={({ pressed }) => ({ width: '100%', minHeight: 54, borderRadius: 16, backgroundColor: C.navy, borderBottomWidth: pressed ? 1 : 5, borderBottomColor: '#002B53', transform: [{ translateY: pressed ? 4 : 0 }], alignItems: 'center', justifyContent: 'center' })}><Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>{step === steps.length - 1 ? <>Start using <Text style={{ color: C.amber }}>Cat</Text>ch</> : 'Show me more'}</Text></Pressable>
   </View>;
 }

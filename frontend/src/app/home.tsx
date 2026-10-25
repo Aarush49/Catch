@@ -45,7 +45,7 @@ export default function Home() {
     <View>
       <View style={[styles.row, { gap: 6, marginBottom: 20 }]}>
         <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 24, width: 27 }} />
-        <Text style={{ fontSize: 18, fontWeight: '700', color: C.navy }}>CATch</Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: C.navy }}><Text style={{ color: C.amber }}>Cat</Text>ch</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Open profile" onPress={() => transitions.goTo('/profile','profile')} style={{ marginLeft: 'auto', height: 40, width: 40, borderRadius: 14, borderWidth: 1, borderColor: C.rule, backgroundColor: '#F3EEE5', alignItems: 'center', justifyContent: 'center' }}><UserRound size={19} color={C.navy} /></Pressable>
       </View>
       <Eyebrow>{today}</Eyebrow>
@@ -60,7 +60,7 @@ export default function Home() {
         <View style={{ flexDirection: 'row', backgroundColor: '#DED8CD', padding: 3, borderRadius: 11 }}>{['Week', 'Month', 'Total'].map((item) => <Pressable key={item} onPress={() => setPeriod(item)} style={{ paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, backgroundColor: period === item ? '#FFFAF1' : 'transparent' }}><Text style={{ fontSize: 9, color: period === item ? C.navy : '#6C716F', fontWeight: period === item ? '700' : '400' }}>{item}</Text></Pressable>)}</View>
       </View>
       <View style={{ marginTop: 5 }}><Chart animate={graphReady} values={period === 'Week' ? values : period === 'Month' ? values.map((value) => value * 3.8) : values.map((value) => value * 8.2)} /></View>
-    </View> : <View style={[styles.panel, { marginTop: 2 }]}><Empty title="Your CATch is empty" copy="Scan your first receipt to start seeing today, future, and planet costs." action={() => router.push('/scan')} /></View>}
+    </View> : <View style={[styles.panel, { marginTop: 2 }]}><Empty title="Your Catch is empty" copy="Scan your first receipt to start seeing today, future, and planet costs." action={() => router.push('/scan')} /></View>}
     <SectionTitle right={<Pressable onPress={() => router.push('/dashboard')} style={[styles.row, { gap: 3 }]}><Text style={{ fontSize: 11, color: C.navy, fontWeight: '700' }}>See all</Text><ArrowRight size={14} color={C.navy} /></Pressable>}>Recent receipts</SectionTitle>
     {recent.slice(0, 4).map((receipt) => <ReceiptRow key={receipt.id} merchant={receipt.merchant} date={receipt.date} total={receipt.total} carbon={receipt.items.reduce((sum, item) => sum + item.carbon, 0)} onPress={() => router.push({ pathname: '/receipt/[id]', params: { id: receipt.id } })} morphTo={{ pathname: '/receipt/[id]', params: { id: receipt.id } }} />)}
     {!recent.length && <Text style={[styles.body, { paddingVertical: 10 }]}>No receipts yet.</Text>}

@@ -1,4 +1,4 @@
-# $color{yellow}{Cat}$ch
+# $\color{yellow}{Cat}$ch
 
 Expo app and FastAPI backend for receipt scanning, spending history, shopping
 comparisons, Nessie banking, and financial predictions.

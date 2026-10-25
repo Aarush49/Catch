@@ -25,7 +25,7 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
       <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 34, width: 38 }} />
-          <Text style={{ fontSize: 22, fontWeight: '700', color: C.navy }}>CATch</Text>
+          <Text style={{ fontSize: 22, fontWeight: '700', color: C.navy }}><Text style={{ color: C.amber }}>Cat</Text>ch</Text>
         </View>
 
         <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 36 }}>
@@ -46,7 +46,7 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
           {!signup && onDemo && <Pressable onPress={onDemo} style={({ pressed }) => ({ minHeight: 48, borderRadius: 15, borderWidth: 1, borderColor: C.navy, backgroundColor: pressed ? '#E6EAF0' : '#F3EEE5', alignItems: 'center', justifyContent: 'center', marginTop: 10 })}><Text style={{ color: C.navy, fontSize: 12, fontWeight: '700' }}>Explore demo with sample data</Text></Pressable>}
 
           <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 }}>
-            <Text style={{ fontSize: 11, color: C.muted }}>{signup ? 'Already have an account? ' : 'New to CATch? '}</Text>
+            <Text style={{ fontSize: 11, color: C.muted }}>{signup ? 'Already have an account? ' : <>New to <Text style={{ color: C.amber, fontWeight: '700' }}>Cat</Text>ch? </>}</Text>
             <Pressable onPress={onSwitch}><Text style={{ fontSize: 11, color: C.navy, fontWeight: '700' }}>{signup ? 'Sign in' : 'Create an account'}</Text></Pressable>
           </View>
         </View>

@@ -38,7 +38,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   if (!isReady) return <View style={{ flex: 1, backgroundColor: '#EAE4D9', alignItems: 'center', justifyContent: 'center' }}>
     <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 150, width: 166, marginBottom: 12 }} />
-    <Text style={{ fontFamily: fontsLoaded ? 'DMSans_700Bold' : undefined, fontSize: 28, color: '#003A70' }}>CATch</Text>
+    <Text style={{ fontFamily: fontsLoaded ? 'DMSans_700Bold' : undefined, fontSize: 28, color: '#003A70' }}><Text style={{ color: '#FBBF24' }}>Cat</Text>ch</Text>
   </View>;
 
   return <>

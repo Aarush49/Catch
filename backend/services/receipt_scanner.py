@@ -1,39 +1,14 @@
-import logging
-import os
 import io
-import time
-from datetime import date
+import os
+import re
+from difflib import SequenceMatcher
+from datetime import datetime
 from typing import Literal
 
 import httpx
-from google import genai
-from google.genai import types
 from PIL import Image
-from pydantic import BaseModel, Field, field_validator
 
 Category = Literal["Groceries", "Dining", "Household", "Health", "Transport", "Other"]
-
-class ScannedItem(BaseModel):
-    name: str | None = None
-    quantity: float | None = 1
-    price: float | None = None
-    category: Category = "Other"
-
-class ScannedReceipt(BaseModel):
-    merchant: str | None = None
-    purchased_at: date | None = None
-    currency: str | None = None
-    items: list[ScannedItem] = Field(default_factory=list)
-    subtotal: float | None = None
-    tax: float | None = None
-    total: float | None = None
-
-    @field_validator("subtotal", "tax", "total")
-    @classmethod
-    def nonnegative(cls, value):
-        return None if value is None else max(0, float(value))
-
-PROMPT = """Read this receipt without inventing any items or prices. Return merchant, purchased_at as YYYY-MM-DD or null, currency, subtotal, tax, total, and purchased line items with name, quantity, line-total price, and category. Categories are exactly Groceries, Dining, Household, Health, Transport, Other. Expand abbreviated names when obvious; otherwise keep a readable cleaned version. Ignore payment/card lines, loyalty points, barcodes, subtotals, taxes, and totals as items. Use null for unreadable receipt fields. If this is not a purchase receipt, return no merchant, no total, and an empty items list."""
 
 class OCRConfigurationError(RuntimeError):
     pass
@@ -79,7 +54,26 @@ def _ocr_receipt(image: bytes) -> str:
                               files={"image": ("receipt.jpg", encoded, "image/jpeg")}, timeout=30)
         response.raise_for_status()
         result = response.json()
-        text = "\n".join(block.get("text", "").strip() for block in result if block.get("text", "").strip())
+        # API Ninjas returns text boxes, often one word per box. Reconstruct
+        # rows from their bounding boxes so prices stay beside item names.
+        blocks = [block for block in result if block.get("text", "").strip() and block.get("bounding_box")]
+        blocks.sort(key=lambda block: ((block["bounding_box"]["y1"] + block["bounding_box"]["y2"]) / 2,
+                                       block["bounding_box"]["x1"]))
+        rows: list[dict[str, object]] = []
+        for block in blocks:
+            box = block["bounding_box"]
+            cy = (box["y1"] + box["y2"]) / 2
+            height = max(box["y2"] - box["y1"], 1)
+            row = next((candidate for candidate in rows
+                        if abs(cy - float(candidate["cy"])) <= max(5, min(height, float(candidate["height"])) * .65)), None)
+            if row is None:
+                rows.append({"cy": cy, "height": height, "words": [(box["x1"], block["text"].strip())]})
+            else:
+                row["words"].append((box["x1"], block["text"].strip()))
+                row["cy"] = (float(row["cy"]) + cy) / 2
+        text = "\n".join(" ".join(word for _, word in sorted(row["words"])) for row in rows)
+        if not text:
+            text = "\n".join(block.get("text", "").strip() for block in result if block.get("text", "").strip())
         if not text:
             raise ValueError("No readable receipt text was found. Try a sharper, brighter image.")
         return text
@@ -94,41 +88,109 @@ def _ocr_receipt(image: bytes) -> str:
     except httpx.HTTPError:
         raise RuntimeError("Receipt OCR could not reach API Ninjas. Check your network and retry.") from None
 
-def scan_image(image: bytes, mime_type: str) -> dict:
-    key = os.getenv("GEMINI_API_KEY")
-    if not key:
-        raise RuntimeError("Receipt scanning is not configured.")
-    timeout_ms = max(30_000, int(os.getenv("GEMINI_TIMEOUT_MS", "120000")))
-    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=timeout_ms))
-    recognized_text = _ocr_receipt(image)
-    contents = [f"{PROMPT}\n\nOCR text extracted from the receipt image:\n---\n{recognized_text}\n---"]
-    error = None
-    for attempt in range(2):
-        try:
-            response = client.models.generate_content(
-                model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
-                contents=contents,
-                config=types.GenerateContentConfig(temperature=0, response_mime_type="application/json", response_schema=ScannedReceipt),
-            )
-            parsed = ScannedReceipt.model_validate_json(response.text or "{}")
-            parsed.items = [item for item in parsed.items if item.name and item.price is not None and item.price >= 0]
-            if not parsed.items and not parsed.merchant and parsed.total is None:
-                raise ValueError("The image does not appear to contain a readable receipt.")
-            item_sum = sum((item.price or 0) for item in parsed.items)
-            baseline = parsed.subtotal if parsed.subtotal is not None else item_sum
-            difference = abs(item_sum - baseline)
-            needs_review = bool(baseline and difference / baseline > .05)
-            result = parsed.model_dump(mode="json")
-            result.update(needs_review=needs_review, review_reason=(f"Item totals differ from the subtotal by ${difference:.2f}." if needs_review else None))
-            return result
-        except ValueError:
-            raise
-        except Exception as exc:
-            error = exc
-            logging.getLogger(__name__).warning("Gemini scan attempt %d failed: %s: %s",
-                                                attempt + 1, type(exc).__name__, str(exc)[:300])
-            if attempt:
+
+def _local_parse_receipt(text: str) -> dict:
+    """Best-effort fallback for when the receipt structuring model is unavailable."""
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip()]
+    excluded = ("subtotal", "tax", "total", "change", "cash", "debit", "credit", "payment", "account",
+                "approval", "network", "barcode", "items sold", "tender", "balance", "discount", "savings")
+    summary_prefixes = ("subt", "total", "tax", "salestax", "amountdue", "balance", "change", "cash",
+                        "debit", "credit", "payment", "tender", "discount", "savings", "itemssold", "eft")
+    amount = re.compile(r"(?:\$\s*)?(\d{1,6}\.\d{2})\s*[A-Z0-9]?$", re.IGNORECASE)
+
+    def has_total_marker(value: str) -> bool:
+        normalized = re.sub(r"[^a-z]", "", value.lower())
+        if any(normalized.startswith(prefix) for prefix in ("total", "subt", "grandtotal")):
+            return True
+        # OCR commonly swaps/drops one character (for example TOTHL).
+        tokens = re.findall(r"[a-z]+", value.lower())
+        candidates = tokens + ([normalized] if normalized not in tokens else [])
+        return any(
+            len(candidate) in range(4, 10)
+            and SequenceMatcher(None, candidate, label).ratio() >= .78
+            for candidate in candidates for label in ("total", "subtotal")
+        )
+
+    # Receipt summaries come after the purchased items. Once the total area
+    # starts, none of its amounts should be interpreted as another item.
+    summary_start = next(
+        (index for index, line in enumerate(lines)
+         if (match := amount.search(line)) and has_total_marker(line[:match.start()])),
+        len(lines),
+    )
+    items = []
+    for line_index, line in enumerate(lines[:summary_start]):
+        match = amount.search(line)
+        if not match:
+            continue
+        name = line[:match.start()].strip(" -:*$")
+        if len(name) < 2 and line_index > 0:
+            # OCR can put the item's name/UPC and its price in adjacent rows.
+            previous = lines[line_index - 1]
+            if (not amount.search(previous) and not any(term in previous.lower() for term in excluded)
+                    and not has_total_marker(previous)):
+                name = previous
+        name = re.sub(r"\b\d{6,}\b", "", name).strip(" -:*$")
+        name = re.sub(r"\s+[A-Z]$", "", name, flags=re.IGNORECASE).strip()
+        if (len(name) < 2 or any(term in line.lower() for term in excluded)
+                or any(re.sub(r"[^a-z]", "", name.lower()).startswith(prefix) for prefix in summary_prefixes)
+                or has_total_marker(name)):
+            continue
+        price = float(match.group(1))
+        if price <= 0:
+            continue
+        lowered = name.lower()
+        category: Category = "Other"
+        if any(word in lowered for word in ("bread", "milk", "egg", "produce", "meat", "cheese", "grocery")):
+            category = "Groceries"
+        elif any(word in lowered for word in ("restaurant", "cafe", "coffee", "pizza", "burger", "deli")):
+            category = "Dining"
+        elif any(word in lowered for word in ("soap", "paper", "clean", "detergent", "household")):
+            category = "Household"
+        elif any(word in lowered for word in ("pharmacy", "medicine", "health", "vitamin")):
+            category = "Health"
+        items.append({"name": name, "quantity": 1, "price": price, "category": category})
+
+    def labeled_amount(label: str) -> float | None:
+        for line in reversed(lines):
+            if label in line.lower():
+                match = amount.search(line)
+                if match:
+                    return float(match.group(1))
+        return None
+
+    date_value = None
+    for line in lines:
+        match = re.search(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b", line)
+        if match:
+            month, day, year = map(int, match.groups())
+            year += 2000 if year < 100 else 0
+            try:
+                date_value = datetime(year, month, day).date().isoformat()
                 break
-            # Give transient upstream deadline/load errors a moment to clear.
-            time.sleep(1.5)
-    raise RuntimeError("Gemini could not read the receipt. Please retry; the backend log shows the cause.") from error
+            except ValueError:
+                pass
+    merchant = next((line for line in lines[:8] if not any(term in line.lower() for term in excluded)
+                     and not amount.search(line) and len(line) >= 3), "Unknown store")
+    printed_subtotal = labeled_amount("subtotal")
+    # If OCR misses or clips the printed subtotal label, the sum of purchased
+    # item lines is the pre-tax subtotal. It is metadata, never another item.
+    subtotal = printed_subtotal if printed_subtotal is not None else round(sum(item["price"] for item in items), 2)
+    tax = labeled_amount("tax")
+    if not items:
+        raise ValueError("The receipt text was extracted, but its items could not be identified. Please retry or enter it manually.")
+    return {
+        "merchant": merchant, "purchased_at": date_value, "currency": "USD", "items": items,
+        # In this app's receipt workflow, the subtotal is the authoritative
+        # saved total. Keep tax as separate metadata and never add it to total.
+        "subtotal": subtotal, "tax": tax, "total": subtotal,
+        "needs_review": True,
+        "review_reason": ("Subtotal was estimated from the item prices because the printed subtotal was unreadable. "
+                          "It is saved as the total without adding tax. Please verify the result." if printed_subtotal is None else
+                          "The subtotal is saved as the total without adding tax. Please verify the result."),
+    }
+
+def scan_image(image: bytes, mime_type: str) -> dict:
+    """OCR with API Ninjas, then parse receipt fields locally without Gemini."""
+    recognized_text = _ocr_receipt(image)
+    return _local_parse_receipt(recognized_text)

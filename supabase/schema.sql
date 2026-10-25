@@ -176,7 +176,8 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 
 -- Creates a receipt, or replaces an owned receipt's details and lines, in one
 -- transaction. Runs as the caller, so row level security still applies.
--- Totals are recomputed here: subtotal = sum(price * quantity), total = subtotal + tax.
+-- Subtotal is the sum of item lines. A scanned receipt may provide its own
+-- authoritative total; otherwise total defaults to subtotal plus tax.
 create or replace function public.save_receipt(p_receipt jsonb) returns uuid
 language plpgsql security invoker set search_path = '' as $$
 declare
@@ -184,6 +185,7 @@ declare
   v_id uuid := nullif(p_receipt ->> 'id', '')::uuid;
   v_tax numeric := coalesce(nullif(p_receipt ->> 'tax', '')::numeric, 0);
   v_subtotal numeric;
+  v_total numeric;
 begin
   if v_user is null then
     raise exception 'Sign in to save receipts.' using errcode = '42501';
@@ -193,16 +195,17 @@ begin
   end if;
   select coalesce(sum(coalesce(nullif(e ->> 'quantity', '')::numeric, 1) * (e ->> 'price')::numeric), 0)
     into v_subtotal from jsonb_array_elements(p_receipt -> 'items') as e;
+  v_total := coalesce(nullif(p_receipt ->> 'total', '')::numeric, v_subtotal + v_tax);
 
   if v_id is null then
     insert into public.receipts (user_id, merchant, purchased_at, subtotal, tax, total)
     values (v_user, nullif(btrim(p_receipt ->> 'merchant'), ''), nullif(p_receipt ->> 'purchased_at', '')::date,
-            v_subtotal, v_tax, v_subtotal + v_tax)
+            v_subtotal, v_tax, v_total)
     returning id into v_id;
   else
     update public.receipts
       set merchant = nullif(btrim(p_receipt ->> 'merchant'), ''), purchased_at = nullif(p_receipt ->> 'purchased_at', '')::date,
-          subtotal = v_subtotal, tax = v_tax, total = v_subtotal + v_tax
+          subtotal = v_subtotal, tax = v_tax, total = v_total
       where id = v_id and user_id = v_user;
     if not found then
       raise exception 'Receipt not found.' using errcode = 'P0002';

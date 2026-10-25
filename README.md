@@ -48,7 +48,8 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 | `SUPABASE_URL` | Project URL, e.g. `https://abcd.supabase.co`. |
 | `SUPABASE_SECRET_KEY` | Secret (service-role) key, backend only. |
 | `SUPABASE_JWT_SECRET` | Only for projects on the legacy shared JWT secret; otherwise tokens are checked against the project's public signing keys automatically. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Receipt reading and prediction explanations. |
+| `API_NINJAS_KEY` | Receipt image OCR. Receipt fields are parsed locally by the backend. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Prediction explanations. |
 | `SERPAPI_KEY` | Shopping comparisons. |
 | `NESSIE_API_KEY` | Bank sandbox routes. |
 

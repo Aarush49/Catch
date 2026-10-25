@@ -69,7 +69,7 @@ export default function Scan() {
     Animated.timing(captureOffset, { toValue: Dimensions.get('window').height, duration: 360, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start(() => backOrHome());
   };
   const update = (itemId: string, field: keyof LineItem, value: unknown) => setReceipt((current) => current ? { ...current, items: current.items.map((item) => item.id === itemId ? { ...item, [field]: value } : item) } : current);
-  const save = async () => { if (!receipt) return; const next = { ...receipt, total: +(sum + receipt.tax).toFixed(2) }; try { await saveReceipt(next); router.replace('/home'); } catch (error) { Alert.alert('Could not save receipt', error instanceof Error ? error.message : 'Please try again.'); } };
+  const save = async () => { if (!receipt) return; const next = { ...receipt, total: receipt.scannedTotal ? receipt.total : +(sum + receipt.tax).toFixed(2) }; try { await saveReceipt(next); router.replace('/home'); } catch (error) { Alert.alert('Could not save receipt', error instanceof Error ? error.message : 'Please try again.'); } };
 
   if (step === 'capture') return <Animated.View style={{ flex: 1, backgroundColor: C.linen, justifyContent: 'center', alignItems: 'center', padding: 20, transform: [{ translateY: captureOffset }] }}>
     <Pressable accessibilityRole="button" accessibilityLabel="Close camera" onPress={closeCapture} style={{ position: 'absolute', top: 55, left: '50%', marginLeft: -32, width: 64, height: 64, borderRadius: 34, borderWidth: 6, borderColor: C.amber, borderBottomWidth: 9, borderBottomColor: '#002B53', backgroundColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><ArrowDown color="white" size={25} strokeWidth={2.7} /></Pressable>

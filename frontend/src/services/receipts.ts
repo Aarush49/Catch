@@ -42,6 +42,7 @@ export async function saveReceipt(receipt: Receipt): Promise<Receipt> {
     merchant: receipt.merchant.trim(),
     purchased_at: receipt.date,
     tax: Math.max(receipt.tax || 0, 0),
+    total: receipt.scannedTotal ? Math.max(receipt.total, 0) : null,
     items: items.map((item) => ({ name: item.name.trim(), quantity: item.quantity, price: item.price, category: item.category, carbon_kg_co2e: carbon(item.price * item.quantity, item.category) })),
   } });
   if (error) throw new Error(error.code === '42501' ? 'Your session expired. Please sign in again.' : error.message);
@@ -80,6 +81,6 @@ export async function scanReceipt(uri: string): Promise<Receipt & { needsReview?
   if (!response.ok) throw new Error(payload.detail || 'Could not read this receipt.');
   const items = (payload.items || []).map((item: any, index: number) => { const cat = category(item.category); const quantity = Math.max(Number(item.quantity || 1), 1); const lineTotal = Number(item.price || 0); return { id: `scan-${index}`, name: item.name || 'Unreadable item', quantity, price: lineTotal / quantity, category: cat, carbon: carbon(lineTotal, cat), confidence: payload.needs_review }; });
   const subtotal = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
-  return { id: `scan-${Date.now()}`, merchant: payload.merchant || 'Unknown store', date: payload.purchased_at || new Date().toISOString().slice(0, 10), tax: Number(payload.tax || 0), total: Number(payload.total ?? subtotal + Number(payload.tax || 0)), items, needsReview: payload.needs_review, reviewReason: payload.review_reason };
+  return { id: `scan-${Date.now()}`, merchant: payload.merchant || 'Unknown store', date: payload.purchased_at || new Date().toISOString().slice(0, 10), tax: Number(payload.tax || 0), total: Number(payload.total ?? subtotal), scannedTotal: true, items, needsReview: payload.needs_review, reviewReason: payload.review_reason };
 }
 

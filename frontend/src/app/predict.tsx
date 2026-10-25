@@ -13,15 +13,18 @@ export default function Predict() {
   const [goal, setGoal] = useState(false);
   const base = receipts.slice(0, 4).reduce((sum, receipt) => sum + receipt.total, 0) * 1.9;
   const delta = mode === 'Skip it' ? -cost * frequency : mode === 'Different price' ? cost * frequency * change / 100 : cost * frequency;
+  // Spread the scenario difference over the forecast horizon so every projected week responds smoothly.
+  const progress = [0, .12, .27, .43, .6, .8, 1];
+  const forecast = [base * .45, base * .57, base * .64, base * .7, base * .82, base * .9, base].map((value, index) => value + delta * progress[index]);
 
   return <Screen>
     <Header title="Predict" back="/" />
     <Text style={{ fontSize: 9, letterSpacing: 1.4, color: C.muted, fontWeight: '700', marginTop: 8 }}>A LITTLE WHAT-IF</Text>
-    <Text style={{ fontFamily: 'Georgia', fontSize: 39, lineHeight: 42, color: C.navy, marginTop: 7, marginBottom: 14 }}>Where could{`\n`}this month <Text style={{ fontStyle: 'italic', color: C.tomato }}>land?</Text></Text>
+    <Text style={{ fontFamily: 'Georgia', fontSize: 39, lineHeight: 42, color: C.navy, fontWeight: '600', marginTop: 7, marginBottom: 14 }}>Where could{`\n`}this month <Text style={{ fontStyle: 'italic', color: C.tomato }}>land?</Text></Text>
     <View style={{ borderWidth: 1, borderColor: C.rule, backgroundColor: '#F3EEE5', borderRadius: 20, padding: 15 }}>
       <Text style={{ fontSize: 9, letterSpacing: 1.3, color: C.muted, fontWeight: '700' }}>PROJECTED MONTH END</Text>
       <Money value={base + delta} size={36} color={C.navy} />
-      <Chart values={[base * .45, base * .57, base * .64, base * .7, base * .82, base * .9, base + delta]} comparison={[base * .45, base * .53, base * .62, base * .69, base * .76, base * .84, base]} />
+      <Chart values={forecast} comparison={[base * .45, base * .53, base * .62, base * .69, base * .76, base * .84, base]} />
       <Text style={{ fontSize: 11, color: delta > 0 ? C.tomato : C.jungle, marginTop: 8, fontWeight: '700' }}>{delta > 0 ? '+' : '−'}{money(Math.abs(delta))} if you {mode.toLowerCase()}  ·  {(delta * .18).toFixed(1)} kg CO₂e</Text>
     </View>
     <View style={{ flexDirection: 'row', backgroundColor: '#DED8CD', borderRadius: 13, padding: 4, marginVertical: 15 }}>

@@ -30,8 +30,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, _password: string) => save({ email });
   const signUp = async (name: string, email: string, _password: string) => save({ name, email });
   const signOut = async () => {
-    await AsyncStorage.removeItem(SESSION_KEY);
     setUser(null);
+    await AsyncStorage.removeItem(SESSION_KEY);
   };
   const value = useMemo(() => ({ user, hydrated, signIn, signUp, signOut }), [user, hydrated]);
 

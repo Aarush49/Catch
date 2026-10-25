@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'reac
 import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, Plus, Trash2, Upload, X } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, useCameraPermissions, type CameraView as CameraViewType } from 'expo-camera';
 import { Action, C, Eyebrow, Header, Money, Screen, styles, money } from '../components/tally';
 import { categories, mockReceipts, type LineItem, type Receipt } from '../data/mock';
 import { useTally } from '../store/TallyProvider';
@@ -14,6 +15,9 @@ export default function Scan() {
   const [step, setStep] = useState<'capture' | 'processing' | 'review'>(existing ? 'review' : 'capture');
   const [receipt, setReceipt] = useState<Receipt | null>(existing ? JSON.parse(JSON.stringify(existing)) : null);
   const [remaining, setRemaining] = useState(0);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const cameraRef = React.useRef<CameraViewType>(null);
   const sum = useMemo(() => receipt?.items.reduce((total, item) => total + item.price * item.quantity, 0) || 0, [receipt]);
 
   useEffect(() => {
@@ -25,7 +29,17 @@ export default function Scan() {
   }, [step]);
 
   const start = () => setStep('processing');
-  const capture = async () => { try { const permission = await ImagePicker.requestCameraPermissionsAsync(); if (!permission.granted) { Alert.alert('Camera access needed', 'You can upload a receipt photo instead.'); return; } const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: .7 }); if (!result.canceled) start(); } catch { Alert.alert('Camera unavailable', 'Use Upload instead to choose a receipt photo.'); } };
+  const capture = async () => {
+    try {
+      if (!cameraPermission?.granted) {
+        const permission = await requestCameraPermission();
+        if (!permission.granted) { Alert.alert('Camera access needed', 'Allow camera access in your device settings, or choose a photo from your library.'); return; }
+      }
+      if (!cameraActive) { setCameraActive(true); return; }
+      const photo = await cameraRef.current?.takePictureAsync({ quality: .7 });
+      if (photo?.uri) start();
+    } catch (error) { Alert.alert('Camera unavailable', error instanceof Error ? error.message : 'Please try again or choose a photo from your library.'); }
+  };
   const upload = async () => { try { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .7 }); if (!result.canceled) start(); } catch { start(); } };
   const update = (itemId: string, field: keyof LineItem, value: unknown) => setReceipt((current) => current ? { ...current, items: current.items.map((item) => item.id === itemId ? { ...item, [field]: value } : item) } : current);
   const save = () => { if (!receipt) return; const next = { ...receipt, total: +(sum + receipt.tax).toFixed(2) }; setReceipts((all) => existing ? all.map((item) => item.id === existing.id ? next : item) : [next, ...all]); router.replace('/home'); };
@@ -33,15 +47,14 @@ export default function Scan() {
   if (step === 'capture') return <View style={{ flex: 1, backgroundColor: C.linen, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
     <Pressable onPress={() => router.back()} style={{ position: 'absolute', top: 55, left: 20, width: 42, height: 42, borderRadius: 24, backgroundColor: '#DED8CD', alignItems: 'center', justifyContent: 'center' }}><X color={C.navy} /></Pressable>
     <View style={{ position: 'absolute', top: 62 }}><Text style={{ fontFamily: 'Georgia', fontSize: 22, color: C.navy, fontWeight: '600' }}>Scan a receipt</Text></View>
-    <View style={{ height: '48%', width: '76%', borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.navy, backgroundColor: '#F3EEE5', borderRadius: 18, alignItems: 'center', justifyContent: 'center', gap: 11 }}>
-      <Camera color={C.navy} size={30} />
-      <Text style={{ fontSize: 11, color: C.muted }}>Point your camera at a receipt</Text>
-      <Text style={{ position: 'absolute', top: 12, color: C.navy, fontSize: 9, letterSpacing: 1.2, fontWeight: '700' }}>FIT YOUR RECEIPT HERE</Text>
+    <View style={{ height: '48%', width: '76%', borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.navy, backgroundColor: '#F3EEE5', borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', gap: 11 }}>
+      {cameraActive && cameraPermission?.granted ? <CameraView ref={cameraRef} style={{ width: '100%', height: '100%' }} facing="back" /> : <><Camera color={C.navy} size={30} /><Text style={{ fontSize: 11, color: C.muted }}>Tap the camera button to start</Text></>}
+      <Text style={{ position: 'absolute', top: 12, color: cameraActive ? 'white' : C.navy, fontSize: 9, letterSpacing: 1.2, fontWeight: '700' }}>FIT YOUR RECEIPT HERE</Text>
     </View>
-    <View style={{ position: 'absolute', bottom: 45, alignItems: 'center', gap: 12 }}>
+    <View style={{ position: 'absolute', bottom: 35, alignItems: 'center', gap: 10 }}>
       <Text style={{ fontSize: 12, color: C.muted }}>We’ll pick out the items for you.</Text>
-      <Pressable onPress={capture} style={{ height: 68, width: 68, borderRadius: 40, borderWidth: 3, borderColor: C.navy, backgroundColor: C.amber, alignItems: 'center', justifyContent: 'center' }}><View style={{ height: 48, width: 48, borderRadius: 28, borderWidth: 2, borderColor: '#846313' }} /></Pressable>
-      <Pressable onPress={upload} style={{ padding: 8, flexDirection: 'row', gap: 6 }}><Upload size={14} color={C.navy} /><Text style={{ fontSize: 12, color: C.navy, textDecorationLine: 'underline' }}>Upload instead</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel={cameraActive ? 'Take receipt photo' : 'Open camera'} onPress={capture} style={{ height: 68, width: 68, borderRadius: 40, borderWidth: 3, borderColor: C.navy, backgroundColor: C.amber, alignItems: 'center', justifyContent: 'center' }}><View style={{ height: 48, width: 48, borderRadius: 28, borderWidth: 2, borderColor: '#846313', alignItems: 'center', justifyContent: 'center' }}>{cameraActive && <Camera size={20} color={C.navy} />}</View></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Choose receipt photo from library" onPress={upload} style={{ height: 46, minWidth: 205, borderRadius: 15, borderWidth: 1, borderColor: C.navy, backgroundColor: '#FFFAF1', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}><Upload size={15} color={C.navy} /><Text style={{ fontSize: 12, color: C.navy, fontWeight: '700' }}>Choose from library</Text></Pressable>
     </View>
   </View>;
 

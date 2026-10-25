@@ -58,6 +58,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="rewind" />
         <Stack.Screen name="group" />
         <Stack.Screen name="calendar" />
+        <Stack.Screen name="profile" />
       </Stack.Protected>
     </Stack>
   </>;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowRight, ChevronRight, RotateCcw, ShoppingBasket, Sparkles, TrendingDown } from 'lucide-react-native';
+import { ArrowRight, ChevronRight, RotateCcw, ShoppingBasket, Sparkles, TrendingDown, UserRound } from 'lucide-react-native';
 import { Chart, C, Eyebrow, ReceiptRow, money, Screen, SectionTitle, styles } from '../components/tally';
 import { useTally } from '../store/TallyProvider';
 
@@ -20,6 +20,7 @@ export default function Home() {
             <Text style={{ fontFamily: 'Georgia', fontSize: 17, color: C.amber, fontWeight: '700' }}>C</Text>
           </View>
           <Text style={{ fontSize: 18, fontWeight: '700', color: C.navy }}>CATch</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open profile" onPress={() => router.push('/profile')} style={{ marginLeft: 'auto', height: 40, width: 40, borderRadius: 14, borderWidth: 1, borderColor: C.rule, backgroundColor: '#F3EEE5', alignItems: 'center', justifyContent: 'center' }}><UserRound size={19} color={C.navy} /></Pressable>
         </View>
         <Eyebrow>SATURDAY, OCTOBER 24</Eyebrow>
         <Text style={[styles.h1, { fontSize: 41 }]}>Good morning,{`\n`}<Text style={{ color: C.tomato, fontStyle: 'italic' }}>Alex.</Text></Text>

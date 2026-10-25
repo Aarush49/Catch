@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Text, View } from 'react-native';
+import { Image, Platform, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -24,7 +24,11 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { user, hydrated: authHydrated } = useAuth();
   const pathname = usePathname();
   const [minimumSplashElapsed, setMinimumSplashElapsed] = useState(false);
-  const resourcesReady = fontsLoaded && storeHydrated && authHydrated;
+  // A blocked or unsupported web-font request must never strand the web app on
+  // its loading screen. Native still waits for the bundled fonts; web can use
+  // the system font until DM Sans becomes available.
+  const fontsReady = Platform.OS === 'web' || fontsLoaded;
+  const resourcesReady = fontsReady && storeHydrated && authHydrated;
   const isReady = resourcesReady && minimumSplashElapsed;
 
   useEffect(() => {

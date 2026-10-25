@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -33,9 +33,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   }, [resourcesReady]);
 
   if (!isReady) return <View style={{ flex: 1, backgroundColor: '#EAE4D9', alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ height: 58, width: 58, borderRadius: 18, backgroundColor: '#003A70', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-      <Text style={{ fontFamily: fontsLoaded ? 'DMSans_700Bold' : undefined, fontSize: 34, color: '#FBBF24' }}>C</Text>
-    </View>
+    <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 150, width: 166, marginBottom: 12 }} />
     <Text style={{ fontFamily: fontsLoaded ? 'DMSans_700Bold' : undefined, fontSize: 28, color: '#003A70' }}>CATch</Text>
   </View>;
 

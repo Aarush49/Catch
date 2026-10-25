@@ -1,5 +1,5 @@
 import React from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowRight, LockKeyhole, Mail, User } from 'lucide-react-native';
 import { C, styles } from './tally';
@@ -22,7 +22,7 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <View style={{ height: 34, width: 34, borderRadius: 11, backgroundColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontFamily: 'Georgia', fontSize: 21, color: C.amber, fontWeight: '700' }}>C</Text></View>
+          <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 34, width: 38 }} />
           <Text style={{ fontSize: 22, fontWeight: '700', color: C.navy }}>CATch</Text>
         </View>
 

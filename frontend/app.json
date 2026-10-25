@@ -4,6 +4,7 @@
     "slug": "catch-finance",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/catch-icon.png",
     "scheme": "catch",
     "userInterfaceStyle": "light",
     "plugins": [
@@ -18,11 +19,22 @@
       [
         "expo-splash-screen",
         {
+          "image": "./assets/catch-logo.png",
+          "imageWidth": 210,
           "backgroundColor": "#EAE4D9",
           "resizeMode": "contain"
         }
       ]
     ],
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/catch-logo.png",
+        "backgroundColor": "#EAE4D9"
+      }
+    },
+    "web": {
+      "favicon": "./assets/catch-icon.png"
+    },
     "experiments": { "typedRoutes": true }
   }
 }

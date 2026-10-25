@@ -13,10 +13,3 @@ export const mockReceipts: Receipt[] = Array.from({ length: 25 }, (_, n) => {
   return { id: `receipt-${n}`, merchant: merchants[n % merchants.length], date: day.toISOString().slice(0, 10), total: +(subtotal + tax).toFixed(2), tax, items: lineItems };
 });
 export const categories: Category[] = ['Groceries', 'Dining', 'Household', 'Health', 'Transport', 'Other'];
-export const alternatives: Record<string, {name:string;store:string;price:number;carbon:number}> = {
-  'Ground beef': { name: 'Lentil crumbles', store: "Trader Joe's", price: 4.99, carbon: 1.1 },
-  'Oat milk': { name: 'Oat beverage', store: 'H-E-B', price: 3.19, carbon: .3 },
-  'Paper towels': { name: 'Reusable cloths', store: 'Target', price: 6.49, carbon: .8 },
-  'Greek yogurt': { name: 'Plain yogurt', store: 'H-E-B', price: 3.99, carbon: .7 },
-  'Avocados (3 ct)': { name: 'Avocados (3 ct)', store: 'H-E-B', price: 3.49, carbon: .6 },
-};

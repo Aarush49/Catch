@@ -4,5 +4,5 @@ import { useAuth } from '../store/AuthProvider';
 
 export default function Index() {
   const { user } = useAuth();
-  return <Redirect href={user ? '/home' : '/login'} />;
+  return <Redirect href={user ? (user.needsOnboarding ? '/onboarding' : '/home') : '/login'} />;
 }

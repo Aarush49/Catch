@@ -45,7 +45,10 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
       </Stack.Protected>
-      <Stack.Protected guard={Boolean(user)}>
+      <Stack.Protected guard={Boolean(user?.needsOnboarding)}>
+        <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={Boolean(user && !user.needsOnboarding)}>
         <Stack.Screen name="home" />
         <Stack.Screen name="dashboard" />
         <Stack.Screen name="scan" />

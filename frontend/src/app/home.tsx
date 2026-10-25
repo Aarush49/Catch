@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowRight, ChevronRight, RotateCcw, ShoppingBasket, Sparkles, TrendingDown } from 'lucide-react-native';
 import { Chart, C, Eyebrow, ReceiptRow, money, Screen, SectionTitle, styles } from '../components/tally';
@@ -16,9 +16,7 @@ export default function Home() {
     <Screen>
       <View>
         <View style={[styles.row, { gap: 6, marginBottom: 20 }]}>
-          <View style={{ height: 24, width: 24, borderRadius: 8, backgroundColor: C.navy, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontFamily: 'Georgia', fontSize: 17, color: C.amber, fontWeight: '700' }}>C</Text>
-          </View>
+          <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 24, width: 27 }} />
           <Text style={{ fontSize: 18, fontWeight: '700', color: C.navy }}>CATch</Text>
         </View>
         <Eyebrow>SATURDAY, OCTOBER 24</Eyebrow>

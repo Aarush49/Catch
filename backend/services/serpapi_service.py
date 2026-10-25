@@ -115,6 +115,11 @@ def _normalize_product(item: object) -> ShoppingProduct | None:
     product_id = item.get("product_id")
     if isinstance(product_id, int) and not isinstance(product_id, bool):
         product_id = str(product_id)
+    reviews = item.get("reviews")
+    if isinstance(reviews, bool) or not isinstance(reviews, int) or reviews < 0:
+        reviews = None
+    old_price, unit_price = _old_price(item, price)
+    extensions = [text for value in item.get("extensions") or [] if (text := _text(value))] if isinstance(item.get("extensions"), list) else []
     return ShoppingProduct(
         title=title,
         price=float(price),
@@ -123,7 +128,28 @@ def _normalize_product(item: object) -> ShoppingProduct | None:
         link=link,
         thumbnail=_public_url(item.get("thumbnail")),
         product_id=_text(product_id),
+        reviews=reviews,
+        old_price=float(old_price) if old_price is not None else None,
+        unit_price=unit_price,
+        tag=_text(item.get("tag")),
+        delivery=_text(item.get("delivery")),
+        nearby=next((text for text in extensions if text.casefold().startswith(("nearby", "also nearby"))), None),
     )
+
+
+_UNIT_PRICE = re.compile(r"\$\d+(?:\.\d{1,2})?/[a-z]+", re.IGNORECASE)
+
+
+def _old_price(item: dict, price: Decimal) -> tuple[Decimal | None, str | None]:
+    """Google's old_price is either a previous price ("$20", "Usually $37") or a unit price ("$0.31/ct")."""
+    displayed = _text(item.get("old_price"))
+    if not displayed:
+        return None, None
+    if _UNIT_PRICE.fullmatch(displayed):
+        return None, displayed
+    match = _USD_PRICE.fullmatch(re.sub(r"^usually\s+", "", displayed, flags=re.IGNORECASE))
+    previous = _positive_price(match.group(1).replace(",", "")) if match else None
+    return (previous, None) if previous is not None and previous > price else (None, None)
 
 
 def search_products(query: str) -> list[ShoppingProduct]:

@@ -4,8 +4,9 @@ import { mockReceipts } from '../data/mock';
 import { accessToken, isDemoSession } from './auth';
 import { demoMode, getSupabase } from './supabase';
 
-const factors: Record<Category, number> = { Groceries: .12, Dining: .16, Household: .1, Health: .07, Transport: .2, Other: .09 };
-const carbon = (price: number, category: Category) => +(price * factors[category]).toFixed(2);
+/** Illustrative kg CO2e per dollar spent, by category. */
+export const carbonFactors: Record<Category, number> = { Groceries: .12, Dining: .16, Household: .1, Health: .07, Transport: .2, Other: .09 };
+const carbon = (price: number, category: Category) => +(price * carbonFactors[category]).toFixed(2);
 const category = (value?: string): Category => ['Groceries', 'Dining', 'Household', 'Health', 'Transport', 'Other'].includes(value || '') ? value as Category : 'Other';
 
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);

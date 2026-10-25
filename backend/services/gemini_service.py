@@ -211,6 +211,23 @@ def _thinking_config(model: str) -> dict:
     return {}
 
 
+def _explanation_model() -> str:
+    # Explanations must answer within EXPLANATION_TIMEOUT_MS for the Predict sliders; slower models always fall back.
+    return os.getenv("GEMINI_EXPLANATION_MODEL", "gemini-3.5-flash").strip()
+
+
+def _generate_explanation(client: genai.Client, model: str, contents: str, config: dict):
+    try:
+        return client.models.generate_content(model=model, contents=contents, config=types.GenerateContentConfig(**config))
+    except errors.ClientError as error:
+        thinking = config.get("thinking_config")
+        if error.code == 400 and thinking is not None and thinking.thinking_level == types.ThinkingLevel.MINIMAL and "thinking level" in str(error).lower():
+            # Some flash models reject MINIMAL; LOW is accepted by every Gemini 3 model.
+            retry = {**config, "thinking_config": types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)}
+            return client.models.generate_content(model=model, contents=contents, config=types.GenerateContentConfig(**retry))
+        raise
+
+
 def explain_future_savings(
     future_savings: float,
     years: int,
@@ -237,7 +254,7 @@ def explain_future_savings(
     if time.monotonic() < _explanations_paused_until:
         return fallback, False
     try:
-        model = _model_name()
+        model = _explanation_model()
         config = {
             "max_output_tokens": 256,
             "http_options": types.HttpOptions(timeout=EXPLANATION_TIMEOUT_MS, retry_options=types.HttpRetryOptions(attempts=1)),
@@ -247,16 +264,12 @@ def explain_future_savings(
             config["temperature"] = 0.2
         # Keep the client referenced: google-genai closes its HTTP connection when the Client is garbage collected.
         client = _client()
-        response = client.models.generate_content(
-            model=model,
-            contents=(
-                "Write exactly one plain, friendly sentence for a consumer finance app. "
-                f"Say that {subject} "
-                f"could grow to about {amount} in {years} years at {annual_return:.1%} annual return. "
-                "Do not add advice, caveats, or other numbers."
-            ),
-            config=types.GenerateContentConfig(**config),
-        )
+        response = _generate_explanation(client, model, (
+            "Write exactly one plain, friendly sentence for a consumer finance app. "
+            f"Say that {subject} "
+            f"could grow to about {amount} in {years} years at {annual_return:.1%} annual return. "
+            "Do not add advice, caveats, or other numbers."
+        ), config)
         candidate = response.candidates[0] if response.candidates else None
         truncated = candidate is not None and candidate.finish_reason == types.FinishReason.MAX_TOKENS
         text = (response.text or "").strip().replace("\n", " ").strip('" ')

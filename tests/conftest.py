@@ -94,6 +94,7 @@ def no_real_gemini(monkeypatch):
     def unexpected(*args, **kwargs):
         raise AssertionError("Unmocked Gemini client")
     monkeypatch.setattr(gemini_service.genai, "Client", unexpected)
+    monkeypatch.delenv("GEMINI_EXPLANATION_MODEL", raising=False)
     gemini_service._explanations.clear()
     monkeypatch.setattr(gemini_service, "_explanations_paused_until", 0.0)
 

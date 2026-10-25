@@ -1,0 +1,1 @@
+export default { content: ['./index.html', './src/**/*.{ts,tsx}'], theme: { extend: { colors: { linen: '#EAE4D9', navy: '#003A70', tomato: '#D03027', jungle: '#16A34A', amber: '#FBBF24', ink: '#081627', prussian: '#11233B' }, fontFamily: { display: ['Fraunces', 'Georgia', 'serif'], body: ['DM Sans', 'sans-serif'] } } }, plugins: [] };

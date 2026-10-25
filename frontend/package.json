@@ -1,11 +1,12 @@
 {
-  "name": "ripple-mobile",
+  "name": "catch-finance",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "web": "expo start --web",
     "lint": "eslint src"
   },
   "dependencies": {
@@ -40,7 +41,8 @@
     "@types/react": "~19.2.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~57.0.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "@types/react-native": "^0.72.8"
   },
   "private": true
 }

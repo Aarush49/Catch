@@ -23,23 +23,28 @@ export function Header({title,showProfile=true,showBack=true}:{title:string;back
 export function BottomNav(){const insets=useSafeAreaInsets();const path=usePathname();const active=path==='/home'?'home':path.split('/')[1];const items=[{key:'home',label:'Home',icon:Home,to:'/home'},{key:'dashboard',label:'Dashboard',icon:BarChart3,to:'/dashboard'},{key:'predict',label:'Predict',icon:TrendingDown,to:'/predict'},{key:'group',label:'Group',icon:Users,to:'/group'}];const indicator=useRef(new Animated.Value(-20)).current;const positions=useRef<Record<string,number>>({});const moveIndicator=(key:string,x:number,width:number)=>{positions.current[key]=x+width/2-2.5;if(key===active)Animated.spring(indicator,{toValue:positions.current[key],useNativeDriver:true,speed:18,bounciness:5}).start()};useEffect(()=>{const x=positions.current[active];if(x!==undefined)Animated.spring(indicator,{toValue:x,useNativeDriver:true,speed:18,bounciness:5}).start()},[active,indicator]);return <View style={{position:'absolute',zIndex:1000,elevation:100,bottom:0,left:0,right:0,height:76+insets.bottom,paddingBottom:Math.max(insets.bottom,7),paddingHorizontal:8,backgroundColor:'#F7F2E9',borderTopWidth:1,borderColor:'rgba(8,22,39,.08)',flexDirection:'row',justifyContent:'space-around',alignItems:'center'}}>{items.slice(0,2).map(x=><NavItem key={x.key} label={x.label} icon={x.icon} to={x.to} active={active===x.key} currentPath={path} onLayout={(layoutX,width)=>moveIndicator(x.key,layoutX,width)}/>)}<Pressable accessibilityRole="button" accessibilityLabel="Scan a receipt" onPress={()=>router.push('/scan')} style={({pressed})=>({height:64,width:64,borderRadius:40,borderWidth:4,borderColor:C.amber,borderBottomWidth:7,borderBottomColor:'#002B53',backgroundColor:C.navy,alignItems:'center',justifyContent:'center',marginTop:-22,transform:[{translateY:pressed?3:0}]})}><Camera color="white" size={24}/></Pressable>{items.slice(2).map(x=><NavItem key={x.key} label={x.label} icon={x.icon} to={x.to} active={active===x.key} currentPath={path} onLayout={(layoutX,width)=>moveIndicator(x.key,layoutX,width)}/>)}<Animated.View pointerEvents="none" style={{position:'absolute',bottom:Math.max(insets.bottom,7),left:0,width:5,height:5,borderRadius:3,backgroundColor:C.amber,transform:[{translateX:indicator}]}}/></View>}
 function NavItem({label,icon:Icon,to,active,currentPath,onLayout}:{label:string;icon:any;to:string;active:boolean;currentPath:string;onLayout:(x:number,width:number)=>void}){return <Pressable accessibilityRole="button" onLayout={event=>{const {x,width}=event.nativeEvent.layout;onLayout(x,width)}} onPress={()=>{if(currentPath!==to)DeviceEventEmitter.emit("navTabSelected",to);router.push(to as never)}} style={{width:62,minHeight:50,alignItems:'center',justifyContent:'center',gap:3}}><Icon size={20} color={active?C.navy:'#7B8588'} strokeWidth={2}/><Text style={{fontSize:9,color:active?C.navy:'#7B8588',fontWeight:'600'}}>{label}</Text></Pressable>}export function Chart({values,comparison,animate=false}:{values:number[];comparison?:number[];animate?:boolean}) {
   const w=340,h=145,p=12;
-  const list=[...values,...(comparison||[])];
-  const min=Math.min(...list)*.75,max=Math.max(...list)*1.12;
-  const point=(v:number,i:number):[number,number]=>[p+i*(w-p*2)/Math.max(1,values.length-1),h-p-(v-min)/(max-min)*(h-p*2)];
-  const coords=values.map((v,i)=>point(v,i));
-  const line=(arr:number[])=>arr.map((v,i)=>{const [x,y]=point(v,i);return `${i?'L':'M'} ${x} ${y}`}).join(' ');
-  const fullPath=line(values);
+  // Guard SVG from malformed/empty data; react-native-svg rejects NaN coordinates.
+  const safeValues=values.map(value=>Number.isFinite(Number(value))?Number(value):0);
+  const safeComparison=comparison?.map(value=>Number.isFinite(Number(value))?Number(value):0);
+  const plottedValues=safeValues.length?safeValues:[0,0];
+  const list=[...plottedValues,...(safeComparison||[])];
+  const dataMin=Math.min(...list),dataMax=Math.max(...list),padding=Math.max((dataMax-dataMin)*.1,1);
+  const min=dataMin-padding,max=dataMax+padding;
+  const point=(v:number,i:number,count:number):[number,number]=>[p+i*(w-p*2)/Math.max(1,count-1),h-p-(v-min)/(max-min)*(h-p*2)];
+  const coords=plottedValues.map((v,i)=>point(v,i,plottedValues.length));
+  const line=(arr:number[])=>arr.map((v,i)=>{const [x,y]=point(v,i,arr.length);return `${i?'L':'M'} ${x} ${y}`}).join(' ');
+  const fullPath=line(plottedValues);
   const startPath=`M ${coords[0][0]} ${coords[0][1]}`;
-  const valuesKey=values.join(',');
+  const valuesKey=plottedValues.join(',');
   const [drawnPath,setDrawnPath]=React.useState(animate?startPath:fullPath);
-  const [visiblePoints,setVisiblePoints]=React.useState(animate?1:values.length);
+  const [visiblePoints,setVisiblePoints]=React.useState(animate?1:plottedValues.length);
   const [drawing,setDrawing]=React.useState(false);
   const [startedKey,setStartedKey]=React.useState(animate?valuesKey:'');
   const pathname=usePathname();
   const [tabRedraw,setTabRedraw]=React.useState(0);
   React.useEffect(()=>{const subscription=DeviceEventEmitter.addListener('navTabSelected',(route:string)=>{if(route===pathname)setTabRedraw(value=>value+1)});return()=>subscription.remove()},[pathname]);
   React.useLayoutEffect(()=>{
-    if(!animate&&tabRedraw===0){setDrawnPath(fullPath);setVisiblePoints(values.length);setDrawing(false);setStartedKey('');return;}
+    if(!animate&&tabRedraw===0){setDrawnPath(fullPath);setVisiblePoints(plottedValues.length);setDrawing(false);setStartedKey('');return;}
     setStartedKey(valuesKey);setDrawnPath(startPath);setVisiblePoints(1);setDrawing(true);
     let start:number|undefined;
     let frame=0;
@@ -59,7 +64,7 @@ function NavItem({label,icon:Icon,to,active,currentPath,onLayout}:{label:string;
       }
       setDrawnPath(d);setVisiblePoints(finished+1);
       if(elapsed<segmentCount*segmentDuration)frame=requestAnimationFrame(tick);
-      else{setDrawnPath(fullPath);setVisiblePoints(values.length);setDrawing(false);}
+      else{setDrawnPath(fullPath);setVisiblePoints(plottedValues.length);setDrawing(false);}
     };
     frame=requestAnimationFrame(tick);
     return()=>cancelAnimationFrame(frame);
@@ -67,9 +72,9 @@ function NavItem({label,icon:Icon,to,active,currentPath,onLayout}:{label:string;
   const renderPath=animate&&startedKey!==valuesKey?startPath:drawnPath;
   return <View><Svg viewBox={`0 0 ${w} ${h}`} width="100%" height={145}>
     <Line x1={p} y1={h-15} x2={w-p} y2={h-15} stroke="#C9C2B6" strokeWidth="1"/>
-    {comparison&&<Path d={line(comparison)} fill="none" stroke="#87949A" strokeWidth="2" strokeDasharray="4 5"/>}
+    {safeComparison?.length ? <Path d={line(safeComparison)} fill="none" stroke="#87949A" strokeWidth="2" strokeDasharray="4 5"/> : null}
     <Path d={renderPath} fill="none" stroke={C.navy} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-    {values.slice(0,visiblePoints).map((v,i)=>{const [x,y]=coords[i];return <Circle key={i} cx={x} cy={y} r="3.5" fill={i===values.length-1?C.amber:C.linen} stroke={C.navy} strokeWidth="2"/>})}
+    {plottedValues.slice(0,visiblePoints).map((_v,i)=>{const [x,y]=coords[i];return <Circle key={i} cx={x} cy={y} r="3.5" fill={i===plottedValues.length-1?C.amber:C.linen} stroke={C.navy} strokeWidth="2"/>})}
   </Svg><View style={{flexDirection:'row',justifyContent:'space-between'}}><Text style={styles.tiny}>6 weeks ago</Text><Text style={styles.tiny}>Last week</Text><Text style={styles.tiny}>This week</Text></View></View>
 }export function PopIn({children,delay=0,style}:{children:React.ReactNode;delay?:number;style?:object}){const progress=useRef(new Animated.Value(0)).current;useEffect(()=>{const timer=setTimeout(()=>Animated.spring(progress,{toValue:1,useNativeDriver:true,speed:15,bounciness:8}).start(),delay);return()=>clearTimeout(timer);},[delay]);return <Animated.View style={[style,{opacity:progress,transform:[{scale:progress.interpolate({inputRange:[0,1],outputRange:[.86,1]})},{translateY:progress.interpolate({inputRange:[0,1],outputRange:[18,0]})}]}]}>{children}</Animated.View>}
 export function CarbonTag({value}:{value:number}){const bg=value<1?'#DCEBD9':value<3?'#FAE8AE':'#F2D5D0',fg=value<1?'#17733A':value<3?'#765700':'#A32822';return <View style={{alignSelf:'flex-start',backgroundColor:bg,borderRadius:9,paddingHorizontal:7,paddingVertical:4,flexDirection:'row',alignItems:'center',gap:4}}><View style={{width:6,height:6,borderRadius:5,backgroundColor:fg}}/><Text style={{fontSize:8,color:fg,fontWeight:'700'}}>{value<1?'Low':value<3?'Med':'High'} · {value.toFixed(1)} kg</Text></View>}

@@ -41,10 +41,12 @@ export default function Scan() {
     return () => { clearTimeout(timer); captureOffset.stopAnimation(); };
   }, [step]);
 
-  const start = async (uri: string) => {
+  const start = async (uri: string, sourceWidth?: number) => {
     setLastImage(uri); setScanError(''); setStep('processing');
     try {
-      const image = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1600 } }], { compress: .7, format: ImageManipulator.SaveFormat.JPEG });
+      // Don't inflate scans/photos that are already smaller than the target.
+      const resize = sourceWidth && sourceWidth <= 1600 ? [] : [{ resize: { width: 1600 } }];
+      const image = await ImageManipulator.manipulateAsync(uri, resize, { compress: .7, format: ImageManipulator.SaveFormat.JPEG });
       const parsed = await scanReceipt(image.uri);
       setReceipt(parsed); setReviewWarning(parsed.reviewReason || ''); setStep('review');
     } catch (error) { setScanError(error instanceof Error ? error.message : 'Could not read this receipt.'); }
@@ -57,10 +59,10 @@ export default function Scan() {
       }
       if (!cameraActive) { setCameraActive(true); return; }
       const photo = await cameraRef.current?.takePictureAsync({ quality: .7 });
-      if (photo?.uri) await start(photo.uri);
+      if (photo?.uri) await start(photo.uri, photo.width);
     } catch (error) { Alert.alert('Camera unavailable', error instanceof Error ? error.message : 'Please try again or choose a photo from your library.'); }
   };
-  const upload = async () => { try { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .7 }); if (!result.canceled) await start(result.assets[0].uri); } catch (error) { setScanError(error instanceof Error ? error.message : 'Could not open that image.'); setStep('processing'); } };
+  const upload = async () => { try { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .7 }); if (!result.canceled) await start(result.assets[0].uri, result.assets[0].width); } catch (error) { setScanError(error instanceof Error ? error.message : 'Could not open that image.'); setStep('processing'); } };
   const closeCapture = () => {
     if (closingCapture.current) return;
     closingCapture.current = true;

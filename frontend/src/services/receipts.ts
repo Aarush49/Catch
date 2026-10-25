@@ -59,14 +59,23 @@ export async function deleteReceipt(id: string): Promise<void> {
 
 export async function scanReceipt(uri: string): Promise<Receipt & { needsReview?: boolean; reviewReason?: string }> {
   if (demoMode || isDemoSession()) return { ...mockReceipts[0], id: `demo-${Date.now()}` };
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
-  if (!apiUrl) throw new Error('Receipt scanning is not configured. Add EXPO_PUBLIC_API_URL to frontend/.env.');
+  // Web Expo runs in the browser on this same computer during local development,
+  // so use the local FastAPI address when no explicit API URL is configured.
+  const configuredApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  const apiUrl = (configuredApiUrl || (Platform.OS === 'web' ? 'http://127.0.0.1:8000' : ''))
+    .replace(/\/+$/, '');
+  if (!apiUrl) throw new Error('Receipt scanning is not configured. Set EXPO_PUBLIC_API_URL in frontend/.env.');
   const token = await accessToken();
   if (!token) throw new Error('Your session expired. Please sign in again.');
   const body = new FormData();
   if (Platform.OS === 'web') body.append('file', await (await fetch(uri)).blob(), 'receipt.jpg');
   else body.append('file', { uri, name: 'receipt.jpg', type: 'image/jpeg' } as any);
-  const response = await fetch(`${apiUrl}/receipts/scan`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}/receipts/scan`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+  } catch {
+    throw new Error(`Can't reach the backend at ${apiUrl}. Make sure Uvicorn is running on port 8000 and restart Expo.`);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.detail || 'Could not read this receipt.');
   const items = (payload.items || []).map((item: any, index: number) => { const cat = category(item.category); const quantity = Math.max(Number(item.quantity || 1), 1); const lineTotal = Number(item.price || 0); return { id: `scan-${index}`, name: item.name || 'Unreadable item', quantity, price: lineTotal / quantity, category: cat, carbon: carbon(lineTotal, cat), confidence: payload.needs_review }; });

@@ -83,6 +83,15 @@ def upsert_transactions(user_id: str, rows: list[dict]) -> int:
     return len(data)
 
 
+def prune_transactions(user_id: str, transaction_type: str, keep_external_ids: list[str]) -> None:
+    """Delete this user's Nessie rows of one type that the latest import no longer returned."""
+    def build(client):
+        query = (client.table("transactions").delete().eq("user_id", _uuid(user_id))
+                 .eq("source", "nessie").eq("transaction_type", transaction_type))
+        return query.not_.in_("external_id", keep_external_ids) if keep_external_ids else query
+    execute(build)
+
+
 def transactions(user_id: str) -> list[dict]:
     data = execute(lambda client: client.table("transactions")
                    .select("external_id,transaction_type,date,amount,description,category,source")

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { Check, ExternalLink, Sparkles, X } from 'lucide-react-native';
+import { Check, ExternalLink, PiggyBank, Sparkles, X } from 'lucide-react-native';
 import { Action, C, Eyebrow, Header, Money, Screen, money, styles } from '../components/tally';
+import { moveToSavings } from '../services/bank';
 import { carbonFactors } from '../services/receipts';
 import { compareShoppingList, recordSwap, type ComparedItem, type ShoppingAlternative, type ShoppingComparison } from '../services/shopping';
 import { useTally } from '../store/TallyProvider';
@@ -32,9 +33,10 @@ export default function Compare() {
   const [choices, setChoices] = useState<Record<string, number>>({});
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [savingsNote, setSavingsNote] = useState('');
 
   const load = useCallback(async () => {
-    setLoading(true); setError(''); setChoices({}); setApplied(false);
+    setLoading(true); setError(''); setChoices({}); setApplied(false); setSavingsNote('');
     try { setResult(await compareShoppingList()); }
     catch (err) { setResult(null); setError(err instanceof Error ? err.message : 'Price comparison failed. Please try again.'); }
     finally { setLoading(false); }
@@ -62,10 +64,25 @@ export default function Compare() {
     });
   };
 
+  const moveSwapSavings = async (done: { name: string; to: string; savings: number }[]) => {
+    const amount = done.reduce((sum, swap) => sum + swap.savings, 0);
+    const label = done.length === 1 ? `${done[0].name} → ${done[0].to}` : `${done.length} shopping list swaps`;
+    setSavingsNote('Moving your savings into CATch savings…');
+    try {
+      const { moved, savingsTotal } = await moveToSavings(amount, label);
+      const rounded = Math.abs(moved - amount) > 0.001 ? ' (the bank sandbox moves whole dollars)' : '';
+      setSavingsNote(moved > 0
+        ? `Moved ${money(moved)} into CATch savings${rounded}. Savings balance: ${money(savingsTotal)}.`
+        : `${money(amount)} is under 50¢, so it stays in checking (the bank sandbox moves whole dollars).`);
+    } catch (err) {
+      setSavingsNote(err instanceof Error ? err.message : 'Could not move your savings. Please try again.');
+    }
+  };
+
   const apply = async () => {
     if (!selected.length || applying || applied) return;
     setApplying(true);
-    const done: string[] = [];
+    const done: { name: string; to: string; savings: number }[] = [];
     try {
       for (const { item, alt } of selected) {
         const original = shopping.find((entry) => entry.id === item.item_id);
@@ -77,14 +94,15 @@ export default function Compare() {
           await updateShoppingItem(original.id, { name: original.name, price: original.price }).catch(() => {});
           throw err;
         }
-        done.push(original.name);
+        done.push({ name: original.name, to: alt.title, savings: alt.potential_savings });
       }
       setApplied(true);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Please try again.';
-      Alert.alert('Could not apply every swap', done.length ? `Swapped: ${done.join(', ')}.\n\n${message}` : message);
+      Alert.alert('Could not apply every swap', done.length ? `Swapped: ${done.map((swap) => swap.name).join(', ')}.\n\n${message}` : message);
       if (done.length) setApplied(true);
     } finally { setApplying(false); }
+    if (done.length) await moveSwapSavings(done);
   };
 
   if (loading) return <Screen><Header title="A few smart swaps" back="/shopping" /><View style={{ alignItems: 'center', paddingTop: 120, gap: 14 }}><ActivityIndicator color={C.navy} /><Text style={styles.h2}>Checking prices…</Text><Text style={[styles.body, { textAlign: 'center' }]}>Searching Google Shopping for cheaper options.{'\n'}This takes a few seconds per item.</Text></View></Screen>;
@@ -113,5 +131,6 @@ export default function Compare() {
     {applied
       ? <Action onPress={() => router.replace('/shopping')}>✓ Swaps applied · Back to list</Action>
       : <Action onPress={apply} kind={selected.length ? 'primary' : 'secondary'}>{applying ? 'Applying…' : selected.length ? `Apply ${selected.length} swap${selected.length > 1 ? 's' : ''}  ✓` : 'Pick an option to swap'}</Action>}
+    {!!savingsNote && <View style={[styles.row, { gap: 8, backgroundColor: '#E3EFE0', borderRadius: 14, padding: 12, marginTop: 12 }]}><PiggyBank size={17} color="#157536" /><Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: C.ink }}>{savingsNote}</Text></View>}
   </Screen>;
 }

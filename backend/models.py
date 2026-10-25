@@ -70,6 +70,11 @@ class NessieLinkRequest(BaseModel):
     account_id: str = Field(min_length=1, max_length=100)
 
 
+class SavingsMoveRequest(BaseModel):
+    amount: float = Field(gt=0, le=100_000, allow_inf_nan=False)
+    description: str = Field(default="Swap savings", min_length=1, max_length=200)
+
+
 class PredictionRequest(BaseModel):
     amount: float = Field(gt=0, allow_inf_nan=False)
     years: int = Field(default=30, ge=1, le=100)

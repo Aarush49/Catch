@@ -84,3 +84,15 @@ def supabase_mock(monkeypatch):
         return result
     monkeypatch.setattr(database.httpx, "Client", http_client)
     return stub
+
+
+@pytest.fixture(autouse=True)
+def no_real_nessie(monkeypatch):
+    """Nessie calls must be mocked; never send the local sandbox key or traffic."""
+    from backend.services import nessie_service
+
+    def unexpected(method, url, **kwargs):
+        raise AssertionError(f"Unmocked Nessie request: {method} {httpx.URL(url).path}")
+    monkeypatch.setenv("NESSIE_API_KEY", "fake-nessie-key")
+    monkeypatch.setattr(nessie_service.httpx, "request", unexpected)
+    nessie_service._merchant_categories.clear()

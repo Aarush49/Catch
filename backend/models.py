@@ -16,6 +16,12 @@ class ShoppingProduct(BaseModel):
     link: str
     thumbnail: str | None = None
     product_id: str | None = None
+    reviews: int | None = Field(default=None, ge=0)
+    old_price: float | None = Field(default=None, gt=0, allow_inf_nan=False, description="Previous price when on sale")
+    unit_price: str | None = Field(default=None, description='For example "$0.31/ct"')
+    tag: str | None = Field(default=None, description='Google\'s badge, for example "34% OFF" or "LOW PRICE"')
+    delivery: str | None = None
+    nearby: str | None = Field(default=None, description='For example "Nearby, 6 mi"')
 
 
 class ShoppingAlternative(ShoppingProduct):

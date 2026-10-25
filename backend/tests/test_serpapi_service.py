@@ -23,6 +23,12 @@ def test_successful_search_normalizes_products(respond, listing, serpapi_request
         "link": "https://example.com/products/widget",
         "thumbnail": "https://example.com/widget.jpg",
         "product_id": "12345",
+        "reviews": None,
+        "old_price": None,
+        "unit_price": None,
+        "tag": None,
+        "delivery": None,
+        "nearby": None,
     }]
     serpapi_request.assert_called_once_with(
         SERPAPI_URL,

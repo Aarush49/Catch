@@ -8,17 +8,29 @@ import { carbonFactors } from '../services/receipts';
 import { compareShoppingList, recordSwap, type ComparedItem, type ShoppingAlternative, type ShoppingComparison } from '../services/shopping';
 import { useTally } from '../store/TallyProvider';
 
+const compactCount = (count: number) => count >= 1000 ? `${(count / 1000).toFixed(count >= 10000 ? 0 : 1).replace(/\.0$/, '')}k` : String(count);
+
 function AlternativeRow({ alt, selected, onPress }: { alt: ShoppingAlternative; selected: boolean; onPress: () => void }) {
   const open = () => Linking.openURL(alt.link).catch(() => Alert.alert('Could not open link', alt.link));
+  const rating = alt.rating != null ? ` · ★ ${alt.rating}${alt.reviews ? ` (${compactCount(alt.reviews)})` : ''}` : '';
+  // "Free delivery on $35+" has a minimum order, so only unconditional free delivery is highlighted.
+  const freeDelivery = !!alt.delivery && /^free/i.test(alt.delivery) && !alt.delivery.includes('$');
+  const getIt = [alt.delivery, alt.nearby].filter(Boolean).join(' · ');
   return <Pressable accessibilityRole="radio" accessibilityState={{ selected }} onPress={onPress} style={{ flexDirection: 'row', gap: 10, alignItems: 'center', padding: 9, borderRadius: 13, borderWidth: 1.5, borderColor: selected ? C.jungle : 'transparent', backgroundColor: selected ? '#E3EFE0' : '#FFFAF1', marginTop: 8 }}>
     {alt.thumbnail ? <Image source={{ uri: alt.thumbnail }} style={{ width: 46, height: 46, borderRadius: 9, backgroundColor: '#EEE' }} resizeMode="contain" /> : <View style={{ width: 46, height: 46, borderRadius: 9, backgroundColor: '#E6E2D9' }} />}
     <View style={{ flex: 1, gap: 2 }}>
       <Text numberOfLines={2} style={{ fontSize: 11, fontWeight: '700', color: C.ink }}>{alt.title}</Text>
-      <Text style={styles.tiny} numberOfLines={1}>{alt.source || 'Online store'}{alt.rating != null ? ` · ★ ${alt.rating}` : ''} · {alt.match_type === 'exact_title_match' ? 'Same name' : 'Similar item'}</Text>
+      <Text style={styles.tiny} numberOfLines={1}>{alt.source || 'Online store'}{rating} · {alt.match_type === 'exact_title_match' ? 'Same name' : 'Similar item'}</Text>
+      {(!!alt.tag || alt.old_price != null) && <View style={[styles.row, { gap: 5 }]}>
+        {!!alt.tag && <Text style={{ fontSize: 8, fontWeight: '700', color: '#68500D', backgroundColor: '#F7DC77', borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' }}>{alt.tag}</Text>}
+        {alt.old_price != null && <Text style={[styles.tiny, { textDecorationLine: 'line-through' }]}>was {money(alt.old_price)}</Text>}
+      </View>}
+      {!!getIt && <Text style={[styles.tiny, freeDelivery && { color: C.jungle, fontWeight: '700' }]} numberOfLines={1}>{getIt}</Text>}
       <Text style={{ fontSize: 10, fontWeight: '700', color: C.jungle }}>Save {money(alt.potential_savings)} ({alt.potential_savings_percent.toFixed(0)}%)</Text>
     </View>
     <View style={{ alignItems: 'flex-end', gap: 6 }}>
       <Money value={alt.price} color={C.jungle} />
+      {!!alt.unit_price && <Text style={styles.tiny}>{alt.unit_price}</Text>}
       <Pressable accessibilityRole="link" accessibilityLabel={`Open ${alt.title}`} onPress={open} hitSlop={8} style={[styles.row, { gap: 3 }]}><Text style={{ fontSize: 10, color: C.navy, fontWeight: '700' }}>View</Text><ExternalLink size={11} color={C.navy} /></Pressable>
     </View>
   </Pressable>;

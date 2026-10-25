@@ -6,6 +6,9 @@ export type ShoppingItem = { id: string; name: string; price: number | null; cat
 export type ShoppingAlternative = {
   title: string; price: number; source: string | null; rating: number | null; link: string; thumbnail: string | null;
   match_type: 'exact_title_match' | 'similar_alternative'; potential_savings: number; potential_savings_percent: number;
+  // Extra listing details from the same Google Shopping search; any of them may be missing.
+  reviews?: number | null; old_price?: number | null; unit_price?: string | null; tag?: string | null;
+  delivery?: string | null; nearby?: string | null;
 };
 export type ComparedItem = { item_id: string; name: string; original_price: number | null; alternatives: ShoppingAlternative[]; potential_savings: number; error: string | null };
 export type ShoppingComparison = { items: ComparedItem[]; total_potential_savings: number };

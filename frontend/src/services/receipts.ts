@@ -1,6 +1,6 @@
 import type { Category, Receipt } from '../data/mock';
 import { mockReceipts } from '../data/mock';
-import { accessToken } from './auth';
+import { accessToken, isDemoSession } from './auth';
 import { demoMode, getSupabase } from './supabase';
 
 const factors: Record<Category, number> = { Groceries: .12, Dining: .16, Household: .1, Health: .07, Transport: .2, Other: .09 };
@@ -28,7 +28,7 @@ export async function saveReceipt(receipt: Receipt): Promise<Receipt> {
 }
 
 export async function scanReceipt(uri: string): Promise<Receipt & { needsReview?: boolean; reviewReason?: string }> {
-  if (demoMode) return { ...mockReceipts[0], id: `demo-${Date.now()}` };
+  if (demoMode || isDemoSession()) return { ...mockReceipts[0], id: `demo-${Date.now()}` };
   const apiUrl = process.env.EXPO_PUBLIC_API_URL;
   if (!apiUrl) throw new Error('Receipt scanning is not configured. Add EXPO_PUBLIC_API_URL to frontend/.env.');
   const token = await accessToken();
@@ -42,3 +42,4 @@ export async function scanReceipt(uri: string): Promise<Receipt & { needsReview?
   const subtotal = items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0);
   return { id: `scan-${Date.now()}`, merchant: payload.merchant || 'Unknown store', date: payload.purchased_at || new Date().toISOString().slice(0, 10), tax: Number(payload.tax || 0), total: Number(payload.total ?? subtotal + Number(payload.tax || 0)), items, needsReview: payload.needs_review, reviewReason: payload.review_reason };
 }
+

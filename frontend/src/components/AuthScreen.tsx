@@ -15,9 +15,10 @@ type AuthScreenProps = {
   onSubmit: () => void;
   onSwitch: () => void;
   error?: string;
+  onDemo?: () => void;
 };
 
-export function AuthScreen({ mode, email, password, name = '', onEmailChange, onPasswordChange, onNameChange, onSubmit, onSwitch, error }: AuthScreenProps) {
+export function AuthScreen({ mode, email, password, name = '', onEmailChange, onPasswordChange, onNameChange, onSubmit, onSwitch, error, onDemo }: AuthScreenProps) {
   const signup = mode === 'signup';
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.linen }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -42,6 +43,8 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
             <Text style={{ color: 'white', fontSize: 13, fontWeight: '700' }}>{signup ? 'Create my account' : 'Sign in'}</Text><ArrowRight size={17} color={C.amber} />
           </Pressable>
 
+          {!signup && onDemo && <Pressable onPress={onDemo} style={({ pressed }) => ({ minHeight: 48, borderRadius: 15, borderWidth: 1, borderColor: C.navy, backgroundColor: pressed ? '#E6EAF0' : '#F3EEE5', alignItems: 'center', justifyContent: 'center', marginTop: 10 })}><Text style={{ color: C.navy, fontSize: 12, fontWeight: '700' }}>Explore demo with sample data</Text></Pressable>}
+
           <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 20 }}>
             <Text style={{ fontSize: 11, color: C.muted }}>{signup ? 'Already have an account? ' : 'New to CATch? '}</Text>
             <Pressable onPress={onSwitch}><Text style={{ fontSize: 11, color: C.navy, fontWeight: '700' }}>{signup ? 'Sign in' : 'Create an account'}</Text></Pressable>
@@ -60,4 +63,5 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
 function Field({ icon: Icon, label, ...props }: React.ComponentProps<typeof TextInput> & { icon: typeof Mail; label: string }) {
   return <View style={{ marginBottom: 15 }}><Text style={[styles.eyebrow, { marginBottom: 6 }]}>{label}</Text><View style={{ minHeight: 52, borderWidth: 1, borderColor: '#C9C4B9', backgroundColor: '#F7F3EB', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 }}><Icon size={17} color={C.navy} /><TextInput {...props} placeholderTextColor="#929994" style={{ flex: 1, fontSize: 13, color: C.ink, paddingVertical: 12, outlineStyle: 'none' } as never} /></View></View>;
 }
+
 

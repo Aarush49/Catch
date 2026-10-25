@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Receipt } from '../data/mock';
+import { mockReceipts, type Receipt } from '../data/mock';
 import { listReceipts, saveReceipt as persistReceipt } from '../services/receipts';
 import { useAuth } from './AuthProvider';
 
@@ -23,7 +23,8 @@ export function TallyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!user) { setReceipts([]); setReady(true); return; }
+    if (!user) { setReceipts([]); setShopping([]); setReady(true); return; }
+    if (user.id === 'demo') { setReceipts(mockReceipts); setShopping(['Oat milk', 'Sourdough loaf', 'Avocados']); setReady(true); return; }
     setReady(false);
     (async () => {
       const cached = await Promise.race([
@@ -40,13 +41,14 @@ export function TallyProvider({ children }: { children: React.ReactNode }) {
     })().catch(() => setReady(true));
   }, [hydrated, user?.id, user?.email]);
 
-  useEffect(() => { if (ready) AsyncStorage.setItem('tally-shopping', JSON.stringify(shopping)); }, [ready, shopping]);
+  useEffect(() => { if (ready && user?.id !== 'demo') AsyncStorage.setItem('tally-shopping', JSON.stringify(shopping)); }, [ready, shopping, user?.id]);
   const saveReceipt = async (receipt: Receipt) => {
+    if (user?.id === 'demo') { setReceipts((all) => [receipt, ...all.filter((item) => item.id !== receipt.id)]); return receipt; }
     const saved = await persistReceipt(receipt);
     setReceipts((all) => [saved, ...all.filter((item) => item.id !== receipt.id)]);
     return saved;
   };
-  const reset = async () => { setReceipts([]); setShopping([]); await AsyncStorage.multiSet([['tally-receipts', '[]'], ['tally-shopping', '[]']]); };
+  const reset = async () => { setReceipts([]); setShopping([]); if (user?.id === 'demo') return; await AsyncStorage.multiSet([['tally-receipts', '[]'], ['tally-shopping', '[]']]); };
   const value = useMemo(() => ({ receipts, setReceipts, saveReceipt, shopping, setShopping, ready, reset }), [receipts, shopping, ready]);
   return <TallyContext.Provider value={value}>{children}</TallyContext.Provider>;
 }
@@ -56,3 +58,6 @@ export function useTally() {
   if (!value) throw new Error('useTally must be used inside TallyProvider');
   return value;
 }
+
+
+

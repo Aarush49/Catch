@@ -6,6 +6,7 @@ type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  startDemo: () => void;
   completeOnboarding: () => Promise<void>;
 };
 
@@ -21,15 +22,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => setUser(await auth.signIn(email, password));
   const signUp = async (name: string, email: string, password: string) => setUser(await auth.signUp(name, email, password));
+  const startDemo = () => setUser(auth.startDemoSession());
   const completeOnboarding = async () => {
     await auth.completeOnboarding();
     setUser((current) => current ? { ...current, needsOnboarding: false } : current);
   };
   const signOut = async () => {
-    await auth.signOut();
+    await auth.signOut(user?.id === 'demo');
     setUser(null);
   };
-  const value = useMemo(() => ({ user, hydrated, signIn, signUp, signOut, completeOnboarding }), [user, hydrated]);
+  const value = useMemo(() => ({ user, hydrated, signIn, signUp, signOut, startDemo, completeOnboarding }), [user, hydrated]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -39,3 +41,5 @@ export function useAuth() {
   if (!value) throw new Error('useAuth must be used inside AuthProvider');
   return value;
 }
+
+

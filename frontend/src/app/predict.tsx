@@ -18,13 +18,13 @@ export default function Predict() {
   const forecast = [base * .45, base * .57, base * .64, base * .7, base * .82, base * .9, base].map((value, index) => value + delta * progress[index]);
 
   return <Screen>
-    <Header title="Predict" back="/" />
+    <Header title="Predict" back="/" showBack={false} />
     <Text style={{ fontSize: 9, letterSpacing: 1.4, color: C.muted, fontWeight: '700', marginTop: 8 }}>A LITTLE WHAT-IF</Text>
     <Text style={{ fontFamily: 'Georgia', fontSize: 39, lineHeight: 42, color: C.navy, fontWeight: '600', marginTop: 7, marginBottom: 14 }}>Where could{`\n`}this month <Text style={{ fontStyle: 'italic', color: C.tomato }}>land?</Text></Text>
     <View style={{ borderWidth: 1, borderColor: C.rule, backgroundColor: '#F3EEE5', borderRadius: 20, padding: 15 }}>
       <Text style={{ fontSize: 9, letterSpacing: 1.3, color: C.muted, fontWeight: '700' }}>PROJECTED MONTH END</Text>
       <Money value={base + delta} size={36} color={C.navy} />
-      <Chart values={forecast} comparison={[base * .45, base * .53, base * .62, base * .69, base * .76, base * .84, base]} />
+      <Chart animate values={forecast} comparison={[base * .45, base * .53, base * .62, base * .69, base * .76, base * .84, base]} />
       <Text style={{ fontSize: 11, color: delta > 0 ? C.tomato : C.jungle, marginTop: 8, fontWeight: '700' }}>{delta > 0 ? '+' : '−'}{money(Math.abs(delta))} if you {mode.toLowerCase()}  ·  {(delta * .18).toFixed(1)} kg CO₂e</Text>
     </View>
     <View style={{ flexDirection: 'row', backgroundColor: '#DED8CD', borderRadius: 13, padding: 4, marginVertical: 15 }}>
@@ -41,3 +41,4 @@ export default function Predict() {
 function SliderRow({ label, value, min, max, format, set }: { label: string; value: number; min: number; max: number; format: (value: number) => string; set: (value: number) => void }) {
   return <View style={{ paddingVertical: 7 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ fontSize: 11, color: C.ink }}>{label}</Text><Text style={{ fontSize: 11, color: C.navy, fontWeight: '700' }}>{format(value)}</Text></View><Slider minimumValue={min} maximumValue={max} step={1} value={value} onValueChange={set} minimumTrackTintColor={C.navy} maximumTrackTintColor="#C6C0B5" thumbTintColor={C.amber} /></View>;
 }
+

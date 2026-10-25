@@ -20,7 +20,7 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
   const signup = mode === 'signup';
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.linen }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 22 }}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingVertical: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Image source={require('../../assets/catch-logo.png')} resizeMode="contain" style={{ height: 34, width: 38 }} />
           <Text style={{ fontSize: 22, fontWeight: '700', color: C.navy }}>CATch</Text>
@@ -58,3 +58,4 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
 function Field({ icon: Icon, label, ...props }: React.ComponentProps<typeof TextInput> & { icon: typeof Mail; label: string }) {
   return <View style={{ marginBottom: 15 }}><Text style={[styles.eyebrow, { marginBottom: 6 }]}>{label}</Text><View style={{ minHeight: 52, borderWidth: 1, borderColor: '#C9C4B9', backgroundColor: '#F7F3EB', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 }}><Icon size={17} color={C.navy} /><TextInput {...props} placeholderTextColor="#929994" style={{ flex: 1, fontSize: 13, color: C.ink, paddingVertical: 12 }} /></View></View>;
 }
+

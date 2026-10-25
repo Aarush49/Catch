@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts, DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { AuthProvider, useAuth } from '../store/AuthProvider';
 import { TallyProvider, useTally } from '../store/TallyProvider';
+import { TransitionProvider } from '../store/TransitionProvider';
+import { BottomNav } from '../components/tally';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const screenOptions = { headerShown: false, animation: 'fade' as const, contentStyle: { backgroundColor: '#EAE4D9' } };
+const screenOptions = { headerShown: false, animation: 'none' as const, contentStyle: { backgroundColor: '#EAE4D9' } };
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ DMSans_400Regular, DMSans_500Medium, DMSans_700Bold });
@@ -19,6 +22,7 @@ export default function RootLayout() {
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
   const { ready: storeHydrated } = useTally();
   const { user, hydrated: authHydrated } = useAuth();
+  const pathname = usePathname();
   const [minimumSplashElapsed, setMinimumSplashElapsed] = useState(false);
   const resourcesReady = fontsLoaded && storeHydrated && authHydrated;
   const isReady = resourcesReady && minimumSplashElapsed;
@@ -39,7 +43,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   return <>
     <StatusBar style="dark" />
-    <Stack screenOptions={screenOptions}>
+    <TransitionProvider><Stack screenOptions={screenOptions}>
       <Stack.Screen name="index" />
       <Stack.Protected guard={!user}>
         <Stack.Screen name="login" />
@@ -48,7 +52,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
       <Stack.Protected guard={Boolean(user)}>
         <Stack.Screen name="home" />
         <Stack.Screen name="dashboard" />
-        <Stack.Screen name="scan" />
+        <Stack.Screen name="scan" options={{ presentation: 'transparentModal', contentStyle: { backgroundColor: 'transparent' } }} />
         <Stack.Screen name="receipt/[id]" />
         <Stack.Screen name="shopping" />
         <Stack.Screen name="compare" />
@@ -58,6 +62,7 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="calendar" />
         <Stack.Screen name="profile" />
       </Stack.Protected>
-    </Stack>
+    </Stack></TransitionProvider>
+    {Boolean(user) && pathname !== '/scan' && <BottomNav />}
   </>;
 }

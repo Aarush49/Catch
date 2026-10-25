@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Pressable, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Camera, Plus, Trash2, Upload, X } from 'lucide-react-native';
+import { ArrowDown, Camera, Plus, Trash2, Upload } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions, type CameraView as CameraViewType } from 'expo-camera';
 import { Action, C, Eyebrow, Header, Money, Screen, styles, money } from '../components/tally';
@@ -18,6 +18,8 @@ export default function Scan() {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = React.useRef<CameraViewType>(null);
+  const captureOffset = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  const closingCapture = useRef(false);
   const sum = useMemo(() => receipt?.items.reduce((total, item) => total + item.price * item.quantity, 0) || 0, [receipt]);
 
   useEffect(() => {
@@ -26,6 +28,12 @@ export default function Scan() {
     const timer = setTimeout(() => { const next = JSON.parse(JSON.stringify(mockReceipts[8])) as Receipt; next.id = `receipt-${Date.now()}`; setReceipt(next); setStep('review'); }, 1500);
     const pulse = setInterval(() => setRemaining((value) => Math.max(0, value - 1)), 100);
     return () => { clearTimeout(timer); clearInterval(pulse); };
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 'capture') return;
+    const timer = setTimeout(() => Animated.timing(captureOffset, { toValue: 0, duration: 390, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(), 20);
+    return () => { clearTimeout(timer); captureOffset.stopAnimation(); };
   }, [step]);
 
   const start = () => setStep('processing');
@@ -41,12 +49,17 @@ export default function Scan() {
     } catch (error) { Alert.alert('Camera unavailable', error instanceof Error ? error.message : 'Please try again or choose a photo from your library.'); }
   };
   const upload = async () => { try { const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: .7 }); if (!result.canceled) start(); } catch { start(); } };
+  const closeCapture = () => {
+    if (closingCapture.current) return;
+    closingCapture.current = true;
+    Animated.timing(captureOffset, { toValue: Dimensions.get('window').height, duration: 360, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start(() => router.back());
+  };
   const update = (itemId: string, field: keyof LineItem, value: unknown) => setReceipt((current) => current ? { ...current, items: current.items.map((item) => item.id === itemId ? { ...item, [field]: value } : item) } : current);
   const save = () => { if (!receipt) return; const next = { ...receipt, total: +(sum + receipt.tax).toFixed(2) }; setReceipts((all) => existing ? all.map((item) => item.id === existing.id ? next : item) : [next, ...all]); router.replace('/home'); };
 
-  if (step === 'capture') return <View style={{ flex: 1, backgroundColor: C.linen, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-    <Pressable onPress={() => router.back()} style={{ position: 'absolute', top: 55, left: 20, width: 42, height: 42, borderRadius: 24, backgroundColor: '#DED8CD', alignItems: 'center', justifyContent: 'center' }}><X color={C.navy} /></Pressable>
-    <View style={{ position: 'absolute', top: 62 }}><Text style={{ fontFamily: 'Georgia', fontSize: 22, color: C.navy, fontWeight: '600' }}>Scan a receipt</Text></View>
+  if (step === 'capture') return <Animated.View style={{ flex: 1, backgroundColor: C.linen, justifyContent: 'center', alignItems: 'center', padding: 20, transform: [{ translateY: captureOffset }] }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close camera" onPress={closeCapture} style={{ position: 'absolute', top: 55, left: '50%', marginLeft: -32, width: 64, height: 64, borderRadius: 34, borderWidth: 6, borderColor: C.amber, borderBottomWidth: 9, borderBottomColor: '#002B53', backgroundColor: C.navy, alignItems: 'center', justifyContent: 'center' }}><ArrowDown color="white" size={25} strokeWidth={2.7} /></Pressable>
+    <View style={{ position: 'absolute', top: 128 }}><Text style={{ fontFamily: 'Georgia', fontSize: 22, color: C.navy, fontWeight: '600' }}>Scan a receipt</Text></View>
     <View style={{ height: '48%', width: '76%', borderWidth: 1.5, borderStyle: 'dashed', borderColor: C.navy, backgroundColor: '#F3EEE5', borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', gap: 11 }}>
       {cameraActive && cameraPermission?.granted ? <CameraView ref={cameraRef} style={{ width: '100%', height: '100%' }} facing="back" /> : <><Camera color={C.navy} size={30} /><Text style={{ fontSize: 11, color: C.muted }}>Tap the camera button to start</Text></>}
       <Text style={{ position: 'absolute', top: 12, color: cameraActive ? 'white' : C.navy, fontSize: 9, letterSpacing: 1.2, fontWeight: '700' }}>FIT YOUR RECEIPT HERE</Text>
@@ -56,7 +69,7 @@ export default function Scan() {
       <Pressable accessibilityRole="button" accessibilityLabel={cameraActive ? 'Take receipt photo' : 'Open camera'} onPress={capture} style={{ height: 68, width: 68, borderRadius: 40, borderWidth: 3, borderColor: C.navy, backgroundColor: C.amber, alignItems: 'center', justifyContent: 'center' }}><View style={{ height: 48, width: 48, borderRadius: 28, borderWidth: 2, borderColor: '#846313', alignItems: 'center', justifyContent: 'center' }}>{cameraActive && <Camera size={20} color={C.navy} />}</View></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Choose receipt photo from library" onPress={upload} style={{ height: 46, minWidth: 205, borderRadius: 15, borderWidth: 1, borderColor: C.navy, backgroundColor: '#FFFAF1', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}><Upload size={15} color={C.navy} /><Text style={{ fontSize: 12, color: C.navy, fontWeight: '700' }}>Choose from library</Text></Pressable>
     </View>
-  </View>;
+  </Animated.View>;
 
   if (step === 'processing') return <Screen><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 100 }}><View style={{ height: 76, width: 76, borderRadius: 24, backgroundColor: '#DCE4E8', alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}><ActivityIndicator color={C.navy} /></View><Eyebrow>A MOMENT PLEASE</Eyebrow><Text style={[styles.h1, { textAlign: 'center' }]}>Reading your{`\n`}receipt.</Text><Text style={[styles.body, { marginTop: 12 }]}>Finding the little details for you…</Text><View style={{ width: 210, height: 7, borderRadius: 5, backgroundColor: '#D8D3C9', marginTop: 20, overflow: 'hidden' }}><View style={{ height: 7, width: `${100 - remaining * 6}%`, backgroundColor: C.navy }} /></View><Text style={[styles.tiny, { marginTop: 10 }]}>Usually takes about 1.5 seconds</Text></View></Screen>;
   if (!receipt) return <Screen><Header title="Review receipt" /><Text>No receipt to review.</Text></Screen>;

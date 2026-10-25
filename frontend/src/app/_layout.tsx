@@ -16,7 +16,7 @@ const screenOptions = { headerShown: false, animation: 'none' as const, contentS
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ DMSans_400Regular, DMSans_500Medium, DMSans_700Bold });
-  return <TallyProvider><AuthProvider><RootNavigator fontsLoaded={fontsLoaded} /></AuthProvider></TallyProvider>;
+  return <AuthProvider><TallyProvider><RootNavigator fontsLoaded={fontsLoaded} /></TallyProvider></AuthProvider>;
 }
 
 function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
@@ -49,7 +49,10 @@ function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
       </Stack.Protected>
-      <Stack.Protected guard={Boolean(user)}>
+      <Stack.Protected guard={Boolean(user?.needsOnboarding)}>
+        <Stack.Screen name="onboarding" />
+      </Stack.Protected>
+      <Stack.Protected guard={Boolean(user && !user.needsOnboarding)}>
         <Stack.Screen name="home" />
         <Stack.Screen name="dashboard" />
         <Stack.Screen name="scan" options={{ presentation: 'transparentModal', contentStyle: { backgroundColor: 'transparent' } }} />

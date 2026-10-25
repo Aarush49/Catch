@@ -24,17 +24,20 @@
           "backgroundColor": "#EAE4D9",
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/catch-logo.png",
+        "foregroundImage": "./assets/catch-icon.png",
         "backgroundColor": "#EAE4D9"
       }
     },
     "web": {
       "favicon": "./assets/catch-icon.png"
     },
-    "experiments": { "typedRoutes": true }
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

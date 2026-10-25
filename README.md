@@ -1,6 +1,7 @@
-# Ripple API
+# CATch
 
-FastAPI backend and Expo UI for receipt scanning, spending history, Nessie
+FastAPI backend and Expo UI f
+or receipt scanning, spending history, Nessie
 banking, shopping comparisons, and financial predictions. Supabase stores users,
 sessions, bank links, transactions, receipts, receipt items, and shopping items.
 All application database requests use the Supabase Python SDK over HTTPS, normally port 443. No direct PostgreSQL connection is used.
@@ -14,9 +15,21 @@ npx expo start
 ```
 
 Open the QR code in Expo Go or start an available simulator. The current Expo
-screens still use mock data and AsyncStorage (`frontend/src/store/AppStore.tsx`).
-They need API wiring before UI actions will create rows in Supabase. The backend
-integration below does not change that frontend behavior.
+screens use Supabase Auth and database-backed receipts. Copy `frontend/.env.example`
+to `frontend/.env` and fill in the Supabase URL and anon key. On a physical phone,
+`EXPO_PUBLIC_API_URL` must use your computer's LAN IP (for example
+`http://192.168.x.x:8000`), not localhost; the phone and computer must be on the
+same network. Set `EXPO_PUBLIC_DEMO_MODE=true` only for an offline mock demo.
+
+Start the API so phones on the LAN can reach it:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Create a Supabase project, run `supabase/schema.sql` in its SQL Editor, and copy
+the project values into the frontend and backend environment files. Obtain a
+Gemini API key from Google AI Studio and keep it only in the backend `.env`.
 
 ## Install and configure
 
@@ -67,17 +80,17 @@ in an Expo/Vite public environment variable, browser bundle, or mobile app.
 1. Open your Supabase project and select **SQL Editor → New query**.
 2. Paste the complete contents of `schema.sql`, review it, and click **Run**.
 3. In the Data API settings, ensure the Data API is enabled and the `public`
-   schema is exposed. Keep `ripple_private` out of the exposed schemas list.
+   schema is exposed. Keep `CATch_private` out of the exposed schemas list.
 4. From your project terminal, verify HTTPS access:
 
    ```bash
    python -m scripts.init_db
    ```
 
-The command is now read-only. It calls `ripple_check` and prints:
+The command is now read-only. It calls `CATch_check` and prints:
 
 ```text
-Supabase HTTPS connection and Ripple schema verified. No schema changes were executed.
+Supabase HTTPS connection and CATch schema verified. No schema changes were executed.
 ```
 
 The SDK cannot install arbitrary SQL through the Data API. The SQL Editor step
@@ -137,8 +150,8 @@ curl -X POST http://localhost:8000/api/receipts/scan \
 
 For a controlled demo, optionally run `python -m scripts.seed_supabase_demo`.
 This writes an account and four repeatable sample transactions to Supabase.
-The default demo login is `demo@ripple.local` / `RippleDemo123!`; override it with
-`RIPPLE_DEMO_EMAIL` and `RIPPLE_DEMO_PASSWORD` for a private demo. Re-running
+The default demo login is `demo@CATch.local` / `CATchDemo123!`; override it with
+`CATch_DEMO_EMAIL` and `CATch_DEMO_PASSWORD` for a private demo. Re-running
 updates the same external transaction IDs. The legacy command
 `python scripts/seed_sqlite_demo.py` delegates to this Supabase seed and no longer
 opens SQLite.
@@ -197,7 +210,7 @@ Refunds/negative item prices are not supported by this MVP.
 
 `app/storage.py` keeps its public functions, including optional `user_id`
 arguments. Legacy receipt-only endpoints have no user identity and use the shared
-`ripple-demo` user. User helpers do not provide authentication. The SQL fields
+`CATch-demo` user. User helpers do not provide authentication. The SQL fields
 `merchant`/`expanded_name` map to the existing `store_name`/`full_name` response
 fields. Raw JSON, warnings, UUIDs, dates, timestamps, and item order are retained.
 The new `backend/services/supabase_store.py` adapts the SQLite-era function
@@ -207,7 +220,7 @@ Line ownership is derived from the parent receipt rather than duplicating its
 user ID. Old lines without an estimate initialize to zero; new scans persist the
 estimated value. The previous `sqlite_store` module is only an import shim.
 
-Every save calls **one** `ripple_save_receipt` RPC. This PostgreSQL function
+Every save calls **one** `CATch_save_receipt` RPC. This PostgreSQL function
 creates the demo user if needed, inserts the receipt and every item, and returns
 the saved document in one transaction. An invalid second item rolls back the
 entire save. There are no separate client-side insert calls or swallowed SQL
@@ -216,7 +229,7 @@ exceptions. See [Supabase database functions](https://supabase.com/docs/guides/d
 Read RPCs return numeric values as decimal **strings**, which Python restores to
 `Decimal` before FastAPI serializes responses. This prevents precision loss from
 the SDK's normal JSON float parsing, including for spending aggregates. Small
-JSON helpers live in the unexposed `ripple_private` schema. Collection RPCs return
+JSON helpers live in the unexposed `CATch_private` schema. Collection RPCs return
 JSON arrays, avoiding silent truncation by the Data API's table row limit; very
 large histories may need pagination in a future API version.
 
@@ -229,7 +242,7 @@ uploads currently have no idempotency key.
 
 All seven tables have RLS enabled. The schema grants no table access to `PUBLIC`,
 `anon`, or `authenticated`, and creates no permissive client policies. It also
-revokes execution on every Ripple RPC from those roles. Only `service_role`
+revokes execution on every CATch RPC from those roles. Only `service_role`
 receives table SELECT/INSERT/UPDATE and function EXECUTE privileges, plus DELETE
 on sessions and shopping items for logout and list removal. All RPCs use
 `SECURITY INVOKER`, an empty search path, and schema-qualified references.

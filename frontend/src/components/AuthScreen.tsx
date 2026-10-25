@@ -14,9 +14,10 @@ type AuthScreenProps = {
   onNameChange?: (value: string) => void;
   onSubmit: () => void;
   onSwitch: () => void;
+  error?: string;
 };
 
-export function AuthScreen({ mode, email, password, name = '', onEmailChange, onPasswordChange, onNameChange, onSubmit, onSwitch }: AuthScreenProps) {
+export function AuthScreen({ mode, email, password, name = '', onEmailChange, onPasswordChange, onNameChange, onSubmit, onSwitch, error }: AuthScreenProps) {
   const signup = mode === 'signup';
   return <SafeAreaView style={{ flex: 1, backgroundColor: C.linen }}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -31,9 +32,10 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
           <Text style={[styles.h1, { fontSize: 43, lineHeight: 46 }]}>{signup ? 'Start catching\n' : 'Welcome\n'}<Text style={{ color: C.tomato, fontStyle: 'italic' }}>{signup ? 'the little things.' : 'back.'}</Text></Text>
           <Text style={[styles.body, { fontSize: 13, lineHeight: 19, marginTop: 12, marginBottom: 26 }]}>{signup ? 'See where your money goes, what it could become, and the impact it leaves behind.' : 'Sign in to see your purchases, plans, and shared groups.'}</Text>
 
-          {signup && <Field icon={User} label="NAME" value={name} placeholder="Alex Morgan" onChangeText={onNameChange!} autoCapitalize="words" />}
+          {signup && <Field icon={User} label="NAME" value={name} placeholder="Your name" onChangeText={onNameChange!} autoCapitalize="words" />}
           <Field icon={Mail} label="EMAIL" value={email} placeholder="you@example.com" onChangeText={onEmailChange} keyboardType="email-address" autoCapitalize="none" />
           <Field icon={LockKeyhole} label="PASSWORD" value={password} placeholder={signup ? 'At least 8 characters' : 'Your password'} onChangeText={onPasswordChange} secureTextEntry />
+          {!!error && <Text style={{ color: C.tomato, fontSize: 11, lineHeight: 16 }}>{error}</Text>}
 
           {!signup && <Pressable style={{ alignSelf: 'flex-end', paddingVertical: 7 }}><Text style={{ fontSize: 10, fontWeight: '700', color: C.navy }}>Forgot password?</Text></Pressable>}
           <Pressable onPress={onSubmit} style={({ pressed }) => ({ minHeight: 54, borderRadius: 16, backgroundColor: C.navy, borderBottomWidth: pressed ? 1 : 5, borderBottomColor: '#002B53', transform: [{ translateY: pressed ? 4 : 0 }], flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 12 })}>
@@ -56,6 +58,6 @@ export function AuthScreen({ mode, email, password, name = '', onEmailChange, on
 }
 
 function Field({ icon: Icon, label, ...props }: React.ComponentProps<typeof TextInput> & { icon: typeof Mail; label: string }) {
-  return <View style={{ marginBottom: 15 }}><Text style={[styles.eyebrow, { marginBottom: 6 }]}>{label}</Text><View style={{ minHeight: 52, borderWidth: 1, borderColor: '#C9C4B9', backgroundColor: '#F7F3EB', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 }}><Icon size={17} color={C.navy} /><TextInput {...props} placeholderTextColor="#929994" style={{ flex: 1, fontSize: 13, color: C.ink, paddingVertical: 12 }} /></View></View>;
+  return <View style={{ marginBottom: 15 }}><Text style={[styles.eyebrow, { marginBottom: 6 }]}>{label}</Text><View style={{ minHeight: 52, borderWidth: 1, borderColor: '#C9C4B9', backgroundColor: '#F7F3EB', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, gap: 10 }}><Icon size={17} color={C.navy} /><TextInput {...props} placeholderTextColor="#929994" style={{ flex: 1, fontSize: 13, color: C.ink, paddingVertical: 12, outlineStyle: 'none' } as never} /></View></View>;
 }
 

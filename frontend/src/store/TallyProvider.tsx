@@ -1,7 +1,58 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { mockReceipts, type Receipt } from '../data/mock';
-type TallyContextValue={receipts:Receipt[];setReceipts:React.Dispatch<React.SetStateAction<Receipt[]>>;shopping:string[];setShopping:React.Dispatch<React.SetStateAction<string[]>>;ready:boolean;reset:()=>Promise<void>};
-const TallyContext=createContext<TallyContextValue|null>(null);
-export function TallyProvider({children}:{children:React.ReactNode}){const [receipts,setReceipts]=useState(mockReceipts);const [shopping,setShopping]=useState(['Oat milk','Avocados (3 ct)','Ground beef','Paper towels']);const [ready,setReady]=useState(false);useEffect(()=>{(async()=>{try{const [r,s]=await Promise.all([AsyncStorage.getItem('tally-receipts'),AsyncStorage.getItem('tally-shopping')]);if(r)setReceipts(JSON.parse(r));if(s)setShopping(JSON.parse(s))}finally{setReady(true)}})()},[]);useEffect(()=>{if(ready)AsyncStorage.setItem('tally-receipts',JSON.stringify(receipts))},[ready,receipts]);useEffect(()=>{if(ready)AsyncStorage.setItem('tally-shopping',JSON.stringify(shopping))},[ready,shopping]);const reset=async()=>{await AsyncStorage.multiRemove(['tally-receipts','tally-shopping']);setReceipts(mockReceipts);setShopping(['Oat milk','Avocados (3 ct)','Ground beef','Paper towels'])};const value=useMemo(()=>({receipts,setReceipts,shopping,setShopping,ready,reset}),[receipts,shopping,ready]);return <TallyContext.Provider value={value}>{children}</TallyContext.Provider>}
-export function useTally(){const value=useContext(TallyContext);if(!value)throw new Error('useTally must be used inside TallyProvider');return value}
+import type { Receipt } from '../data/mock';
+import { listReceipts, saveReceipt as persistReceipt } from '../services/receipts';
+import { useAuth } from './AuthProvider';
+
+type TallyContextValue = {
+  receipts: Receipt[];
+  setReceipts: React.Dispatch<React.SetStateAction<Receipt[]>>;
+  saveReceipt: (receipt: Receipt) => Promise<Receipt>;
+  shopping: string[];
+  setShopping: React.Dispatch<React.SetStateAction<string[]>>;
+  ready: boolean;
+  reset: () => Promise<void>;
+};
+const TallyContext = createContext<TallyContextValue | null>(null);
+
+export function TallyProvider({ children }: { children: React.ReactNode }) {
+  const { user, hydrated } = useAuth();
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [shopping, setShopping] = useState<string[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!user) { setReceipts([]); setReady(true); return; }
+    setReady(false);
+    (async () => {
+      const cached = await Promise.race([
+        AsyncStorage.getItem('tally-receipts'),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+      ]);
+      if (cached) setReceipts(JSON.parse(cached));
+      setReady(true);
+      try {
+        const remote = await listReceipts();
+        setReceipts(remote);
+        await AsyncStorage.setItem('tally-receipts', JSON.stringify(remote));
+      } catch { /* Keep the local cache available while offline. */ }
+    })().catch(() => setReady(true));
+  }, [hydrated, user?.id, user?.email]);
+
+  useEffect(() => { if (ready) AsyncStorage.setItem('tally-shopping', JSON.stringify(shopping)); }, [ready, shopping]);
+  const saveReceipt = async (receipt: Receipt) => {
+    const saved = await persistReceipt(receipt);
+    setReceipts((all) => [saved, ...all.filter((item) => item.id !== receipt.id)]);
+    return saved;
+  };
+  const reset = async () => { setReceipts([]); setShopping([]); await AsyncStorage.multiSet([['tally-receipts', '[]'], ['tally-shopping', '[]']]); };
+  const value = useMemo(() => ({ receipts, setReceipts, saveReceipt, shopping, setShopping, ready, reset }), [receipts, shopping, ready]);
+  return <TallyContext.Provider value={value}>{children}</TallyContext.Provider>;
+}
+
+export function useTally() {
+  const value = useContext(TallyContext);
+  if (!value) throw new Error('useTally must be used inside TallyProvider');
+  return value;
+}

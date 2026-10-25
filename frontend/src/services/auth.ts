@@ -11,7 +11,13 @@ export function sessionUser(session: Session | null): AuthUser | null {
 
 export async function restoreSession() {
   if (demoMode) return null;
-  try { return sessionUser((await getSupabase().auth.getSession()).data.session); } catch { return null; }
+  try {
+    const result = await Promise.race([
+      getSupabase().auth.getSession(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Session restore timed out')), 2500)),
+    ]);
+    return sessionUser(result.data.session);
+  } catch { return null; }
 }
 
 export async function signIn(email: string, password: string) {

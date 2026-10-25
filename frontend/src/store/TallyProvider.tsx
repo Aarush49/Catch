@@ -26,12 +26,18 @@ export function TallyProvider({ children }: { children: React.ReactNode }) {
     if (!user) { setReceipts([]); setReady(true); return; }
     setReady(false);
     (async () => {
-      const cached = await AsyncStorage.getItem('tally-receipts');
+      const cached = await Promise.race([
+        AsyncStorage.getItem('tally-receipts'),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+      ]);
       if (cached) setReceipts(JSON.parse(cached));
-      const remote = await listReceipts();
-      setReceipts(remote);
-      await AsyncStorage.setItem('tally-receipts', JSON.stringify(remote));
-    })().catch(() => {}).finally(() => setReady(true));
+      setReady(true);
+      try {
+        const remote = await listReceipts();
+        setReceipts(remote);
+        await AsyncStorage.setItem('tally-receipts', JSON.stringify(remote));
+      } catch { /* Keep the local cache available while offline. */ }
+    })().catch(() => setReady(true));
   }, [hydrated, user?.id, user?.email]);
 
   useEffect(() => { if (ready) AsyncStorage.setItem('tally-shopping', JSON.stringify(shopping)); }, [ready, shopping]);

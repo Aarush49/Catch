@@ -49,7 +49,9 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 | `SUPABASE_SECRET_KEY` | Secret (service-role) key, backend only. |
 | `SUPABASE_JWT_SECRET` | Only for projects on the legacy shared JWT secret; otherwise tokens are checked against the project's public signing keys automatically. |
 | `API_NINJAS_KEY` | Receipt image OCR. Receipt fields are parsed locally by the backend. |
-| `GEMINI_API_KEY` | Prediction explanations. |
+| `GEMINI_API_KEY` | Prediction explanations, and reading receipts whose OCR items don't add up to the printed subtotal. |
+| `GEMINI_RECEIPT_MODEL` | Optional, default `gemini-3.5-flash`. Reads hard receipts carefully (low thinking, up to 45 seconds). |
+| `GEMINI_RECEIPT_BACKUP_MODEL` | Optional, default `gemini-3.7-flash`. Used when the main receipt model is busy or out of quota. |
 | `GEMINI_EXPLANATION_MODEL` | Optional, default `gemini-3.5-flash`. Must answer within 10 seconds; slower models always use the fallback sentence. |
 | `SERPAPI_KEY` | Shopping comparisons. |
 | `NESSIE_API_KEY` | Bank sandbox routes. |

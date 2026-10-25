@@ -7,7 +7,7 @@ from backend.models import (
     ShoppingListComparisonResponse,
     ShoppingListItemCreate,
 )
-from backend.routers.auth import current_user
+from backend.services.supabase_jwt import current_user
 from backend.services.supabase_store import add_shopping_item, delete_shopping_item, list_shopping_items
 from backend.services.serpapi_service import ShoppingServiceError, find_alternatives
 
@@ -44,6 +44,18 @@ def compare_shopping_list(user=Depends(current_user)) -> ShoppingListComparisonR
     results = []
     total_savings = 0.0
     for item in list_shopping_items(user["id"]):
+        if item["completed"]:
+            continue
+        base = {
+            "item_id": item["id"],
+            "name": item["name"],
+            "original_price": item["price"],
+            "allow_lower_quality": item["allow_lower_quality"],
+        }
+        if item["price"] is None:
+            results.append({**base, "alternatives": [], "potential_savings": 0.0,
+                            "error": "Add the price you usually pay to compare this item."})
+            continue
         try:
             alternatives = find_alternatives(
                 item["name"],
@@ -53,22 +65,7 @@ def compare_shopping_list(user=Depends(current_user)) -> ShoppingListComparisonR
             )
             savings = alternatives[0].potential_savings if alternatives else 0.0
             total_savings += savings
-            results.append({
-                "item_id": item["id"],
-                "name": item["name"],
-                "original_price": item["price"],
-                "allow_lower_quality": item["allow_lower_quality"],
-                "alternatives": alternatives,
-                "potential_savings": savings,
-            })
+            results.append({**base, "alternatives": alternatives, "potential_savings": savings})
         except ShoppingServiceError as exc:
-            results.append({
-                "item_id": item["id"],
-                "name": item["name"],
-                "original_price": item["price"],
-                "allow_lower_quality": item["allow_lower_quality"],
-                "alternatives": [],
-                "potential_savings": 0.0,
-                "error": str(exc),
-            })
+            results.append({**base, "alternatives": [], "potential_savings": 0.0, "error": str(exc)})
     return ShoppingListComparisonResponse(items=results, total_potential_savings=total_savings)

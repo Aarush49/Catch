@@ -2,8 +2,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.models import NessieLinkRequest
-from backend.routers.auth import current_user
 from backend.services import supabase_store
+from backend.services.supabase_jwt import current_user
 from backend.services.nessie_service import (
     NessieServiceError,
     accounts,

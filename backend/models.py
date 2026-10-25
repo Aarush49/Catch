@@ -81,7 +81,7 @@ class PredictionRequest(BaseModel):
 class ShoppingComparisonItem(BaseModel):
     item_id: UUID
     name: str
-    original_price: float
+    original_price: float | None
     allow_lower_quality: bool
     alternatives: list[ShoppingAlternative]
     potential_savings: float = Field(ge=0, allow_inf_nan=False)

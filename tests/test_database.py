@@ -8,11 +8,22 @@ from app import database
 from scripts import init_db
 
 
-def test_real_sdk_uses_https_rpc_and_closes_transport(supabase_mock):
-    assert database.check_connection() == {"status": "ok", "schema_version": 2}
-    assert supabase_mock.calls == [("ripple_check", {})]
+def test_check_connection_verifies_version_and_every_table(supabase_mock):
+    result = database.check_connection()
+    assert result["status"] == "ok" and result["schema_version"] == database.SCHEMA_VERSION
+    assert supabase_mock.calls[0][:2] == ("POST", "rpc/ripple_schema_version")
+    selects = {call.name: call.params["select"] for call in supabase_mock.calls[1:]}
+    assert selects == database.EXPECTED_COLUMNS
+    assert all(call.method == "GET" for call in supabase_mock.calls[1:])
     assert all(client.is_closed for client in supabase_mock.transports)
     assert supabase_mock.transports[0].timeout.read == 15
+
+
+@pytest.mark.parametrize("version", [2, None, "3"])
+def test_stale_schema_version_is_rejected(supabase_mock, version):
+    supabase_mock.responses[("POST", "rpc/ripple_schema_version")] = version
+    with pytest.raises(database.DatabaseError):
+        database.check_connection()
 
 
 @pytest.mark.parametrize("variable", ["SUPABASE_URL", "SUPABASE_SECRET_KEY"])
@@ -57,12 +68,12 @@ def test_legacy_jwt_role_is_checked(monkeypatch, role, allowed):
 
 @pytest.mark.parametrize("code, expected", [
     ("23503", database.DatabaseConstraintError), ("23514", database.DatabaseConstraintError),
-    ("PGRST202", database.DatabaseError), ("42P01", database.DatabaseError),
+    ("PGRST202", database.DatabaseError), ("PGRST205", database.DatabaseError), ("42703", database.DatabaseError),
     ("42501", database.DatabaseError), ("PGRST301", database.DatabaseError), ("XX000", database.DatabaseError),
 ])
 def test_provider_errors_are_redacted(supabase_mock, code, expected):
     supabase_mock.status = 400
-    supabase_mock.responses["ripple_check"] = {
+    supabase_mock.responses[("POST", "rpc/ripple_schema_version")] = {
         "code": code, "message": "sb_secret_test_key_never_real", "details": "private-host", "hint": "private data",
     }
     with pytest.raises(expected) as error:
@@ -82,20 +93,13 @@ def test_transport_errors_are_redacted_and_not_retried(supabase_mock, failure):
     assert all(client.is_closed for client in supabase_mock.transports)
 
 
-@pytest.mark.parametrize("response", [None, [], {"status": "bad"}, {"status": "ok", "schema_version": 0}])
-def test_schema_check_rejects_invalid_response(supabase_mock, response):
-    supabase_mock.responses["ripple_check"] = response
-    with pytest.raises(database.DatabaseError):
-        database.check_connection()
-
-
 def test_verification_command_is_read_only(supabase_mock, capsys):
     assert init_db.main() == 0
-    assert supabase_mock.calls == [("ripple_check", {})]
+    assert all(call.method == "GET" or call.name == "rpc/ripple_schema_version" for call in supabase_mock.calls)
     assert "No schema changes were executed" in capsys.readouterr().out
 
 
 def test_verification_failure_exit_code(monkeypatch, capsys):
     monkeypatch.delenv("SUPABASE_URL")
     assert init_db.main() == 1
-    assert "SQL Editor" in capsys.readouterr().out
+    assert "supabase/schema.sql" in capsys.readouterr().out

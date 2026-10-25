@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import date
 from typing import Literal
@@ -39,7 +40,7 @@ def scan_image(image: bytes, mime_type: str) -> dict:
     for attempt in range(2):
         try:
             response = client.models.generate_content(
-                model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
                 contents=[PROMPT, types.Part.from_bytes(data=image, mime_type=mime_type)],
                 config=types.GenerateContentConfig(temperature=0, response_mime_type="application/json", response_schema=ScannedReceipt),
             )
@@ -58,6 +59,8 @@ def scan_image(image: bytes, mime_type: str) -> dict:
             raise
         except Exception as exc:
             error = exc
+            logging.getLogger(__name__).warning("Gemini scan attempt %d failed: %s: %s",
+                                                attempt + 1, type(exc).__name__, str(exc)[:300])
             if attempt:
                 break
-    raise RuntimeError("Gemini did not complete the scan within 30 seconds. Please retry.") from error
+    raise RuntimeError("Gemini could not read the receipt. Please retry; the backend log shows the cause.") from error

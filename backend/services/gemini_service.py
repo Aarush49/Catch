@@ -59,7 +59,7 @@ class GeminiReceiptError(Exception):
 
 
 def _model_name() -> str:
-    return os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    return os.getenv("GEMINI_MODEL", "gemini-3.5-flash").strip()
 
 
 def _client() -> genai.Client:

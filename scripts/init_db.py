@@ -1,16 +1,17 @@
-"""Compatibility command: SQL installation is manual; this only verifies HTTPS."""
+"""Read-only check that supabase/schema.sql is installed. Run: python -m scripts.init_db"""
 
 from app.database import DatabaseError, check_connection
 
 
 def main() -> int:
     try:
-        check_connection()
+        result = check_connection()
     except DatabaseError as exc:
         print(f"Database verification failed: {exc}")
-        print("Install schema.sql in your Supabase project's SQL Editor, then retry.")
+        print("Install supabase/schema.sql in your Supabase project's SQL Editor, then retry.")
         return 1
-    print("Supabase HTTPS connection and Ripple schema verified. No schema changes were executed.")
+    print(f"Supabase schema version {result['schema_version']} verified "
+          f"({len(result['tables'])} tables). No schema changes were executed.")
     return 0
 
 

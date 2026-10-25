@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type { Category, Receipt } from '../data/mock';
 import { mockReceipts } from '../data/mock';
 import { accessToken, isDemoSession } from './auth';
@@ -7,24 +8,52 @@ const factors: Record<Category, number> = { Groceries: .12, Dining: .16, Househo
 const carbon = (price: number, category: Category) => +(price * factors[category]).toFixed(2);
 const category = (value?: string): Category => ['Groceries', 'Dining', 'Household', 'Health', 'Transport', 'Other'].includes(value || '') ? value as Category : 'Other';
 
-export async function listReceipts(): Promise<Receipt[]> {
-  if (demoMode) return mockReceipts;
-  const { data, error } = await getSupabase().from('receipts').select('id,merchant,purchased_at,subtotal,tax,total,receipt_items(id,name,quantity,price,category)').order('purchased_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map((row: any) => ({ id: row.id, merchant: row.merchant || 'Unknown store', date: row.purchased_at || new Date().toISOString().slice(0, 10), tax: Number(row.tax || 0), total: Number(row.total || 0), items: (row.receipt_items || []).map((item: any) => ({ id: item.id, name: item.name, quantity: Number(item.quantity || 1), price: Number(item.price || 0), category: category(item.category), carbon: carbon(Number(item.price || 0) * Number(item.quantity || 1), category(item.category)) })) }));
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const receiptColumns = 'id,merchant,purchased_at,tax,total,receipt_items(id,position,name,quantity,price,category,carbon_kg_co2e)';
+const today = () => new Date().toISOString().slice(0, 10);
+
+function toReceipt(row: any): Receipt {
+  const items = [...(row.receipt_items || [])].sort((a: any, b: any) => a.position - b.position).map((item: any) => {
+    const cat = category(item.category);
+    const quantity = Number(item.quantity || 1);
+    const price = Number(item.price || 0);
+    return { id: item.id, name: item.name, quantity, price, category: cat, carbon: item.carbon_kg_co2e == null ? carbon(price * quantity, cat) : Number(item.carbon_kg_co2e) };
+  });
+  return { id: row.id, merchant: row.merchant || 'Unknown store', date: row.purchased_at || today(), tax: Number(row.tax || 0), total: Number(row.total || 0), items };
 }
 
+export async function listReceipts(): Promise<Receipt[]> {
+  if (demoMode) return mockReceipts;
+  const { data, error } = await getSupabase().from('receipts').select(receiptColumns).order('purchased_at', { ascending: false }).order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(toReceipt);
+}
+
+// Creates a receipt, or replaces an already-saved one, in a single database transaction.
 export async function saveReceipt(receipt: Receipt): Promise<Receipt> {
   if (demoMode) return receipt;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(receipt.date) || Number.isNaN(Date.parse(`${receipt.date}T12:00:00`))) throw new Error('Enter the date as YYYY-MM-DD.');
+  const items = receipt.items.filter((item) => item.name.trim());
+  if (items.some((item) => !(item.price >= 0) || !(item.quantity > 0))) throw new Error('Each item needs a price of 0 or more and a quantity above 0.');
   const supabase = getSupabase();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) throw new Error('Your session expired. Please sign in again.');
-  const subtotal = receipt.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const { data, error } = await supabase.from('receipts').insert({ user_id: auth.user.id, merchant: receipt.merchant, purchased_at: receipt.date, subtotal, tax: receipt.tax, total: subtotal + receipt.tax }).select('id').single();
+  const { data: id, error } = await supabase.rpc('save_receipt', { p_receipt: {
+    id: isUuid(receipt.id) ? receipt.id : null,
+    merchant: receipt.merchant.trim(),
+    purchased_at: receipt.date,
+    tax: Math.max(receipt.tax || 0, 0),
+    items: items.map((item) => ({ name: item.name.trim(), quantity: item.quantity, price: item.price, category: item.category, carbon_kg_co2e: carbon(item.price * item.quantity, item.category) })),
+  } });
+  if (error) throw new Error(error.code === '42501' ? 'Your session expired. Please sign in again.' : error.message);
+  const { data, error: readError } = await supabase.from('receipts').select(receiptColumns).eq('id', id).single();
+  if (readError) throw readError;
+  return toReceipt(data);
+}
+
+export async function deleteReceipt(id: string): Promise<void> {
+  if (demoMode || !isUuid(id)) return;
+  const { data, error } = await getSupabase().from('receipts').delete().eq('id', id).select('id');
   if (error) throw error;
-  const { error: itemError } = await supabase.from('receipt_items').insert(receipt.items.map((item) => ({ receipt_id: data.id, name: item.name, quantity: item.quantity, price: item.price, category: item.category })));
-  if (itemError) { await supabase.from('receipts').delete().eq('id', data.id); throw itemError; }
-  return { ...receipt, id: data.id, total: +(subtotal + receipt.tax).toFixed(2) };
+  if (!data?.length) throw new Error('This receipt was already deleted or belongs to another account.');
 }
 
 export async function scanReceipt(uri: string): Promise<Receipt & { needsReview?: boolean; reviewReason?: string }> {
@@ -34,7 +63,8 @@ export async function scanReceipt(uri: string): Promise<Receipt & { needsReview?
   const token = await accessToken();
   if (!token) throw new Error('Your session expired. Please sign in again.');
   const body = new FormData();
-  body.append('file', { uri, name: 'receipt.jpg', type: 'image/jpeg' } as any);
+  if (Platform.OS === 'web') body.append('file', await (await fetch(uri)).blob(), 'receipt.jpg');
+  else body.append('file', { uri, name: 'receipt.jpg', type: 'image/jpeg' } as any);
   const response = await fetch(`${apiUrl}/receipts/scan`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.detail || 'Could not read this receipt.');

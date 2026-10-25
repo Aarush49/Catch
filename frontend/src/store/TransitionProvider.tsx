@@ -9,6 +9,12 @@ type TransitionApi = { goTo: (route: '/profile' | '/calendar', kind: RevealKind)
 const Context = createContext<TransitionApi | null>(null);
 const duration = 380;
 
+// A refreshed or directly opened page (common on web) has no history to pop.
+export function backOrHome() {
+  if (router.canGoBack()) router.back();
+  else router.replace('/');
+}
+
 export function TransitionProvider({ children }: { children: React.ReactNode }) {
   const [overlay, setOverlay] = useState<null | { kind: OverlayKind; phase: 'in' | 'out' }>(null);
   const progress = useRef(new Animated.Value(0)).current;
@@ -36,7 +42,7 @@ export function TransitionProvider({ children }: { children: React.ReactNode }) 
     if (locked.current) return;
     locked.current = true;
     if (backHandler.current) backHandler.current(route, () => { locked.current = false; });
-    else { if (route) router.replace(route as never); else router.back(); locked.current = false; }
+    else { if (route) router.replace(route as never); else backOrHome(); locked.current = false; }
   };
   const registerBack = useCallback((handler: (route?: string, done?: () => void) => void) => {
     backHandler.current = handler;

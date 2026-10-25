@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Literal
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
+
+from backend.services import gemini_service
 
 Category = Literal["Groceries", "Dining", "Household", "Health", "Transport", "Other"]
 
@@ -38,6 +40,22 @@ def _fit_api_ninjas_free_limit(image: bytes) -> bytes:
     except Exception as exc:
         raise ValueError("This image could not be prepared for receipt scanning.") from exc
     raise ValueError("This receipt image is too detailed to fit the OCR service's 200 KB free limit. Try a clearer, closer photo.")
+
+
+def _prepare_for_ocr(image: bytes) -> bytes:
+    """Grayscale, stretch contrast, enlarge small photos and sharpen, so thin receipt print survives OCR."""
+    try:
+        with Image.open(io.BytesIO(image)) as source:
+            prepared = ImageOps.autocontrast(ImageOps.grayscale(ImageOps.exif_transpose(source)), cutoff=1)
+            if max(prepared.size) < 1800:
+                scale = 1800 / max(prepared.size)
+                prepared = prepared.resize((round(prepared.width * scale), round(prepared.height * scale)), Image.Resampling.LANCZOS)
+            prepared = prepared.filter(ImageFilter.UnsharpMask(radius=2, percent=150, threshold=3))
+            output = io.BytesIO()
+            prepared.save(output, format="JPEG", quality=92)
+            return output.getvalue()
+    except Exception:
+        return image
 
 
 def _ocr_receipt(image: bytes) -> str:
@@ -96,7 +114,8 @@ def _local_parse_receipt(text: str) -> dict:
                 "approval", "network", "barcode", "items sold", "tender", "balance", "discount", "savings")
     summary_prefixes = ("subt", "total", "tax", "salestax", "amountdue", "balance", "change", "cash",
                         "debit", "credit", "payment", "tender", "discount", "savings", "itemssold", "eft")
-    amount = re.compile(r"(?:\$\s*)?(\d{1,6}\.\d{2})\s*[A-Z0-9]?$", re.IGNORECASE)
+    # A trailing letter is a tax flag; a trailing digit means this isn't a price (e.g. "SM/3.607" is a 3.60Z size).
+    amount = re.compile(r"(?:\$\s*)?(\d{1,6}\.\d{2})(?:\s*[A-Z])?$", re.IGNORECASE)
 
     def has_total_marker(value: str) -> bool:
         normalized = re.sub(r"[^a-z]", "", value.lower())
@@ -132,7 +151,8 @@ def _local_parse_receipt(text: str) -> dict:
                 name = previous
         name = re.sub(r"\b\d{6,}\b", "", name).strip(" -:*$")
         name = re.sub(r"\s+[A-Z]$", "", name, flags=re.IGNORECASE).strip()
-        if (len(name) < 2 or any(term in line.lower() for term in excluded)
+        if (len(name) < 2 or re.match(r"^\d+\s*@", name)  # "1 @ 1.99 each" describes the line above
+                or any(term in line.lower() for term in excluded)
                 or any(re.sub(r"[^a-z]", "", name.lower()).startswith(prefix) for prefix in summary_prefixes)
                 or has_total_marker(name)):
             continue
@@ -188,9 +208,86 @@ def _local_parse_receipt(text: str) -> dict:
         "review_reason": ("Subtotal was estimated from the item prices because the printed subtotal was unreadable. "
                           "It is saved as the total without adding tax. Please verify the result." if printed_subtotal is None else
                           "The subtotal is saved as the total without adding tax. Please verify the result."),
+        # Internal: whether the OCR items add up to the printed subtotal; scan_image removes it.
+        "_items_match_subtotal": printed_subtotal is not None
+        and abs(round(sum(item["price"] for item in items), 2) - printed_subtotal) <= 0.02,
     }
 
+
+def _receipt_from_gemini(payload: dict) -> dict:
+    """Convert Gemini's receipt JSON to the scan response, folding discount lines into the items above them."""
+    items: list[dict] = []
+    discounted = False
+    for line in payload.get("items") or []:
+        name = str(line.get("name") or "").strip()
+        try:
+            line_total = round(float(line.get("line_total") or 0), 2)
+            quantity = max(1, round(float(line.get("quantity") or 1)))
+        except (TypeError, ValueError):
+            continue
+        if line_total < 0:
+            # Saved item prices can't be negative, so a discount reduces the purchases printed before it.
+            remaining = -line_total
+            for item in reversed(items):
+                taken = min(remaining, item["price"])
+                item["price"] = round(item["price"] - taken, 2)
+                remaining = round(remaining - taken, 2)
+                if remaining <= 0:
+                    break
+            discounted = True
+            continue
+        if not name or line_total == 0:
+            continue
+        category = line.get("category") if line.get("category") in gemini_service._APP_CATEGORIES else "Other"
+        items.append({"name": name[:200], "quantity": quantity, "price": line_total, "category": category})
+    if not items:
+        raise ValueError("The receipt could not be read. Please retry with a closer photo or enter it manually.")
+
+    purchased_at = None
+    raw_date = str(payload.get("date") or "").strip()
+    for pattern in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"):
+        try:
+            purchased_at = datetime.strptime(raw_date, pattern).date().isoformat()
+            break
+        except ValueError:
+            pass
+    item_sum = round(sum(item["price"] for item in items), 2)
+    try:
+        printed_subtotal = round(float(payload.get("subtotal") or 0), 2)
+        tax = round(float(payload.get("tax") or 0), 2)
+    except (TypeError, ValueError):
+        printed_subtotal, tax = 0.0, 0.0
+    subtotal = printed_subtotal if printed_subtotal > 0 else item_sum
+    notes = ["Read with Gemini because the text scan didn't add up."]
+    if discounted:
+        notes.append("Discounts were subtracted from the items above them.")
+    if abs(item_sum - subtotal) > 0.02:
+        notes.append(f"The items add up to ${item_sum:.2f} but the printed subtotal is ${subtotal:.2f}.")
+    notes.append("The subtotal is saved as the total without adding tax. Please verify the result.")
+    return {
+        "merchant": str(payload.get("store") or "").strip()[:200] or "Unknown store",
+        "purchased_at": purchased_at, "currency": "USD", "items": items,
+        "subtotal": subtotal, "tax": tax or None, "total": subtotal,
+        "needs_review": True, "review_reason": " ".join(notes),
+    }
+
+
 def scan_image(image: bytes, mime_type: str) -> dict:
-    """OCR with API Ninjas, then parse receipt fields locally without Gemini."""
-    recognized_text = _ocr_receipt(image)
-    return _local_parse_receipt(recognized_text)
+    """OCR with API Ninjas and parse locally; if the items don't add up to the printed subtotal, read the photo with Gemini."""
+    local, local_error = None, None
+    try:
+        local = _local_parse_receipt(_ocr_receipt(_prepare_for_ocr(image)))
+    except Exception as exc:
+        local_error = exc
+    if local is not None and local.pop("_items_match_subtotal"):
+        return local
+    if not os.getenv("GEMINI_API_KEY", "").strip():
+        if local is not None:
+            return local
+        raise local_error
+    try:
+        return _receipt_from_gemini(gemini_service.read_receipt(image, mime_type))
+    except Exception:
+        # An OCR result that doesn't add up is usually wrong (sizes read as prices, prices dropped), so don't offer it.
+        raise ValueError("This receipt is hard to read and the careful reader didn't finish. "
+                         "Please try again in a moment, or enter it manually.") from None

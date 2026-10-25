@@ -216,7 +216,7 @@ def _explanation_model() -> str:
     return os.getenv("GEMINI_EXPLANATION_MODEL", "gemini-3.5-flash").strip()
 
 
-def _generate_explanation(client: genai.Client, model: str, contents: str, config: dict):
+def _generate(client: genai.Client, model: str, contents, config: dict):
     try:
         return client.models.generate_content(model=model, contents=contents, config=types.GenerateContentConfig(**config))
     except errors.ClientError as error:
@@ -226,6 +226,99 @@ def _generate_explanation(client: genai.Client, model: str, contents: str, confi
             retry = {**config, "thinking_config": types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)}
             return client.models.generate_content(model=model, contents=contents, config=types.GenerateContentConfig(**retry))
         raise
+
+
+RECEIPT_TIMEOUT_MS = 45_000
+RECEIPT_MAX_SIDE = 1600
+_APP_CATEGORIES = ["Groceries", "Dining", "Household", "Health", "Transport", "Other"]
+_RECEIPT_READ_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "store": {"type": "string"},
+        "date": {"type": "string"},
+        "subtotal": {"type": "number"},
+        "tax": {"type": "number"},
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "quantity": {"type": "number"},
+                    "line_total": {"type": "number"},
+                    "category": {"type": "string", "enum": _APP_CATEGORIES},
+                },
+                "required": ["name", "quantity", "line_total", "category"],
+            },
+        },
+    },
+    "required": ["store", "date", "subtotal", "tax", "items"],
+}
+
+
+def _receipt_models() -> list[str]:
+    primary = os.getenv("GEMINI_RECEIPT_MODEL", "gemini-3.5-flash").strip()
+    backup = os.getenv("GEMINI_RECEIPT_BACKUP_MODEL", "gemini-3.7-flash").strip()
+    return [primary] + ([backup] if backup and backup != primary else [])
+
+
+def _shrink_for_gemini(image_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
+    """Full-size phone photos make Gemini slow without making small print easier to read."""
+    if Image is None:
+        return image_bytes, mime_type
+    try:
+        image = ImageOps.exif_transpose(Image.open(BytesIO(image_bytes))).convert("RGB")
+        image.thumbnail((RECEIPT_MAX_SIDE, RECEIPT_MAX_SIDE), Image.Resampling.LANCZOS)
+        out = BytesIO()
+        image.save(out, format="JPEG", quality=85)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        return image_bytes, mime_type
+
+
+def read_receipt(image_bytes: bytes, mime_type: str) -> dict:
+    """Read a receipt photo with Gemini and return its raw JSON. Raises if Gemini is unavailable or returns nothing.
+
+    The backup model is only tried when the first one is overloaded or out of quota, not after a timeout,
+    so a scan never waits for two slow reads.
+    """
+    data, data_type = _shrink_for_gemini(image_bytes, mime_type)
+    last_error: Exception | None = None
+    for model in _receipt_models():
+        try:
+            return _read_receipt_with(model, data, data_type)
+        except errors.APIError as error:
+            last_error = error
+            if error.code not in (429, 500, 503):
+                raise
+    raise last_error
+
+
+def _read_receipt_with(model: str, image_bytes: bytes, mime_type: str) -> dict:
+    config = {
+        "response_mime_type": "application/json",
+        "response_json_schema": _RECEIPT_READ_SCHEMA,
+        "max_output_tokens": 8192,
+        "http_options": types.HttpOptions(timeout=RECEIPT_TIMEOUT_MS, retry_options=types.HttpRetryOptions(attempts=1)),
+    }
+    if model.startswith(("gemini-3", "gemini-4")):
+        # Minimal thinking misreads or stalls on receipts; low thinking reads every line in ~20 s.
+        config["thinking_config"] = types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW)
+    prompt = (
+        "Read this store receipt. Return the store name, purchase date as YYYY-MM-DD (empty if unreadable), "
+        "the printed subtotal and sales tax (0 if not printed), and every purchased line in printed order. "
+        "line_total is the amount printed in the price column for that line. Coupons, discounts and promotions "
+        "are separate lines with a negative line_total. Lines like '1 @ 1.99 each' only describe the line above; "
+        "do not return them. Never return subtotal, tax, total, payment, card or change lines as items. "
+        "Do not guess unreadable prices."
+    )
+    client = _client()
+    response = client.models.generate_content(
+        model=model, contents=[prompt, types.Part.from_bytes(data=image_bytes, mime_type=mime_type)], config=types.GenerateContentConfig(**config),
+    )
+    if not response.text:
+        raise ValueError("Gemini returned no receipt data.")
+    return json.loads(response.text)
 
 
 def explain_future_savings(
@@ -264,7 +357,7 @@ def explain_future_savings(
             config["temperature"] = 0.2
         # Keep the client referenced: google-genai closes its HTTP connection when the Client is garbage collected.
         client = _client()
-        response = _generate_explanation(client, model, (
+        response = _generate(client, model, (
             "Write exactly one plain, friendly sentence for a consumer finance app. "
             f"Say that {subject} "
             f"could grow to about {amount} in {years} years at {annual_return:.1%} annual return. "

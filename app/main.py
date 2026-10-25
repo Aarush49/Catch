@@ -42,7 +42,7 @@ def health() -> dict[str, str]:
 
 @app.post("/receipts/scan")
 def scan_receipt(file: UploadFile = File(...), _user=Depends(require_supabase_user)) -> dict[str, Any]:
-    """Read a receipt with OCR and local parsing. Nothing is saved until reviewed."""
+    """Read a receipt with OCR and local parsing, falling back to Gemini when the items don't add up. Nothing is saved until reviewed."""
     mime_type = (file.content_type or "").lower()
     if mime_type not in ALLOWED_MIME:
         raise HTTPException(status_code=400, detail="Upload a JPEG, PNG, WebP, or HEIC image.")
